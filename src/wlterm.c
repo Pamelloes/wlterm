@@ -57,6 +57,7 @@ struct term {
 	guint pty_idle_src;
 	guint child_src;
 
+	struct wlt_renderer *rend;
 	struct wlt_face *face;
 	unsigned int cell_width;
 	unsigned int cell_height;
@@ -224,8 +225,18 @@ static gboolean term_configure_cb(GtkWidget *widget, GdkEvent *ev,
 	bool new_adjust_size = term->adjust_size;
 	int r, pid;
 
+	term->width = cev->width;
+	term->height = cev->height;
+
 	/* Initial configure-event, setup fonts, pty, etc. */
 	if (!term->initialized) {
+		r = wlt_renderer_new(&term->rend, term->width, term->height);
+		if (r < 0) {
+			err("cannot initialize renderer (%d)", r);
+			gtk_main_quit();
+			return TRUE;
+		}
+
 		r = term_change_font(term);
 		if (r < 0) {
 			err("cannot load font (%d)", r);
@@ -234,8 +245,6 @@ static gboolean term_configure_cb(GtkWidget *widget, GdkEvent *ev,
 		}
 
 		/* compute cell size */
-		term->width = cev->width;
-		term->height = cev->height;
 		term_recalc_cells(term);
 
 		term_set_geometry(term);
@@ -272,10 +281,12 @@ static gboolean term_configure_cb(GtkWidget *widget, GdkEvent *ev,
 		term_notify_resize(term);
 	} else {
 		/* compute cell size */
-		term->width = cev->width;
-		term->height = cev->height;
 		term_recalc_cells(term);
 		term_notify_resize(term);
+
+		r = wlt_renderer_resize(term->rend, term->width, term->height);
+		if (r < 0)
+			err("cannot resize renderer (%d)", r);
 	}
 
 	/* adjust geometry */
@@ -310,12 +321,13 @@ static gboolean term_redraw_cb(GtkWidget *widget, cairo_t *cr, gpointer data)
 
 	start = g_get_monotonic_time();
 
+	ctx.rend = term->rend;
 	ctx.cr = cr;
 	ctx.face = term->face;
 	ctx.cell_width = term->cell_width;
 	ctx.cell_height = term->cell_height;
 	ctx.screen = term->screen;
-	wlt_render(&ctx);
+	wlt_renderer_draw(&ctx);
 
 	end = g_get_monotonic_time();
 	if (0)
@@ -416,6 +428,7 @@ static void term_free(struct term *term)
 	shl_pty_bridge_free(term->pty_bridge);
 	tsm_vte_unref(term->vte);
 	tsm_screen_unref(term->screen);
+	wlt_renderer_free(term->rend);
 	wlt_face_unref(term->face);
 	wlt_font_unref(term->font);
 	if (term->window)

@@ -38,6 +38,7 @@
 
 struct wlt_font;
 struct wlt_face;
+struct wlt_renderer;
 
 /* fonts */
 
@@ -81,6 +82,7 @@ int wlt_face_render(struct wlt_face *face, struct wlt_glyph **out,
 /* rendering */
 
 struct wlt_draw_ctx {
+	struct wlt_renderer *rend;
 	cairo_t *cr;
 	struct wlt_face *face;
 	unsigned int cell_width;
@@ -88,6 +90,11 @@ struct wlt_draw_ctx {
 	struct tsm_screen *screen;
 };
 
-void wlt_render(struct wlt_draw_ctx *ctx);
+int wlt_renderer_new(struct wlt_renderer **out, unsigned int width,
+		     unsigned int height);
+void wlt_renderer_free(struct wlt_renderer *rend);
+int wlt_renderer_resize(struct wlt_renderer *rend, unsigned int width,
+			unsigned int height);
+void wlt_renderer_draw(const struct wlt_draw_ctx *ctx);
 
 #endif /* WLT_WLTERM_H */
