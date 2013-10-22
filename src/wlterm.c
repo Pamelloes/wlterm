@@ -462,7 +462,6 @@ static int term_new(struct term **out)
 	term->window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
 	gtk_window_set_title(GTK_WINDOW(term->window), "Terminal");
 	gtk_window_set_has_resize_grip(GTK_WINDOW(term->window), FALSE);
-	gtk_window_set_decorated(GTK_WINDOW(term->window), FALSE);
 	g_signal_connect(term->window, "destroy", G_CALLBACK(term_destroy_cb),
 			 term);
 	g_signal_connect(term->window, "key-press-event",
