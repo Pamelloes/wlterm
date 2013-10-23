@@ -235,7 +235,7 @@ static int wlt_renderer_draw_cell(struct tsm_screen *screen, uint32_t id,
 				  unsigned int cwidth, unsigned int posx,
 				  unsigned int posy,
 				  const struct tsm_screen_attr *attr,
-				  void *data)
+				  tsm_age_t age, void *data)
 {
 	const struct wlt_draw_ctx *ctx = data;
 	uint8_t fr, fg, fb, br, bg, bb;
@@ -289,8 +289,7 @@ void wlt_renderer_draw(const struct wlt_draw_ctx *ctx)
 	 * cairo to blit it into the gtk buffer. This way we get two mem-writes
 	 * but at least it's fast enough to render a whole screen. */
 
-	tsm_screen_draw(ctx->screen, NULL, wlt_renderer_draw_cell, NULL,
-			(void*)ctx);
+	tsm_screen_draw(ctx->screen, wlt_renderer_draw_cell, (void*)ctx);
 
 	/* TODO: mark surface as dirty so cairo notices that */
 	cairo_set_source_surface(ctx->cr, rend->surface, 0, 0);
