@@ -289,9 +289,10 @@ void wlt_renderer_draw(const struct wlt_draw_ctx *ctx)
 	 * cairo to blit it into the gtk buffer. This way we get two mem-writes
 	 * but at least it's fast enough to render a whole screen. */
 
+	cairo_surface_flush(rend->surface);
 	tsm_screen_draw(ctx->screen, wlt_renderer_draw_cell, (void*)ctx);
+	cairo_surface_mark_dirty(rend->surface);
 
-	/* TODO: mark surface as dirty so cairo notices that */
 	cairo_set_source_surface(ctx->cr, rend->surface, 0, 0);
 	cairo_paint(ctx->cr);
 }
