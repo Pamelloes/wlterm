@@ -157,6 +157,48 @@ static void wlt_renderer_fill(struct wlt_renderer *rend,
 	}
 }
 
+/* used for debugging; draws a border on the given rectangle */
+static void wlt_renderer_highlight(struct wlt_renderer *rend,
+				   unsigned int x, unsigned int y,
+				   unsigned int width, unsigned int height)
+{
+	unsigned int i, j, tmp;
+	uint8_t *dst;
+	uint32_t out;
+
+	/* clip width */
+	tmp = x + width;
+	if (tmp <= x || x >= rend->width)
+		return;
+	if (tmp > rend->width)
+		width = rend->width - x;
+
+	/* clip height */
+	tmp = y + height;
+	if (tmp <= y || y >= rend->height)
+		return;
+	if (tmp > rend->height)
+		height = rend->height - y;
+
+	/* prepare */
+	dst = rend->data;
+	dst = &dst[y * rend->stride + x * 4];
+	out = (0xff << 24) | (0xd0 << 16) | (0x10 << 8) | 0x10;
+
+	/* draw outline into buffer */
+	for (i = 0; i < height; ++i) {
+		((uint32_t*)dst)[0] = out;
+		((uint32_t*)dst)[width - 1] = out;
+
+		if (!i || i + 1 == height) {
+			for (j = 0; j < width; ++j)
+				((uint32_t*)dst)[j] = out;
+		}
+
+		dst += rend->stride;
+	}
+}
+
 static void wlt_renderer_blend(struct wlt_renderer *rend,
 			       const struct wlt_glyph *glyph,
 			       unsigned int x, unsigned int y,
@@ -262,7 +304,7 @@ static int wlt_renderer_draw_cell(struct tsm_screen *screen, uint32_t id,
 	skip = overlap(ctx, x, y, x + ctx->cell_width, y + ctx->cell_height);
 	skip = skip && age && rend->age && age <= rend->age;
 
-	if (skip)
+	if (skip && !ctx->debug)
 		return 0;
 
 	/* invert colors if requested */
@@ -295,6 +337,10 @@ static int wlt_renderer_draw_cell(struct tsm_screen *screen, uint32_t id,
 			wlt_renderer_blend(rend, glyph, x, y,
 					   fr, fg, fb, br, bg, bb);
 	}
+
+	if (!skip && ctx->debug)
+		wlt_renderer_highlight(rend, x, y, ctx->cell_width * cwidth,
+				       ctx->cell_height);
 
 	return 0;
 }

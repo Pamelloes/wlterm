@@ -82,6 +82,7 @@ int wlt_face_render(struct wlt_face *face, struct wlt_glyph **out,
 /* rendering */
 
 struct wlt_draw_ctx {
+	bool debug;
 	struct wlt_renderer *rend;
 	cairo_t *cr;
 	struct wlt_face *face;
