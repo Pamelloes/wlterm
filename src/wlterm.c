@@ -326,12 +326,15 @@ static gboolean term_redraw_cb(GtkWidget *widget, cairo_t *cr, gpointer data)
 
 	start = g_get_monotonic_time();
 
+	memset(&ctx, 0, sizeof(ctx));
 	ctx.rend = term->rend;
 	ctx.cr = cr;
 	ctx.face = term->face;
 	ctx.cell_width = term->cell_width;
 	ctx.cell_height = term->cell_height;
 	ctx.screen = term->screen;
+	cairo_clip_extents(cr, &ctx.x1, &ctx.y1, &ctx.x2, &ctx.y2);
+
 	wlt_renderer_draw(&ctx);
 
 	end = g_get_monotonic_time();

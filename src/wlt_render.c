@@ -43,6 +43,7 @@ struct wlt_renderer {
 	int stride;
 	uint8_t *data;
 	cairo_surface_t *surface;
+	tsm_age_t age;
 };
 
 static int wlt_renderer_realloc(struct wlt_renderer *rend, unsigned int width,
@@ -230,6 +231,13 @@ static void wlt_renderer_blend(struct wlt_renderer *rend,
 	}
 }
 
+static bool overlap(const struct wlt_draw_ctx *ctx, double x1, double y1,
+		    double x2, double y2)
+{
+	return (ctx->x1 < x2 && ctx->x2 > x1 &&
+		ctx->y1 < y2 && ctx->y2 > y1);
+}
+
 static int wlt_renderer_draw_cell(struct tsm_screen *screen, uint32_t id,
 				  const uint32_t *ch, size_t len,
 				  unsigned int cwidth, unsigned int posx,
@@ -238,10 +246,24 @@ static int wlt_renderer_draw_cell(struct tsm_screen *screen, uint32_t id,
 				  tsm_age_t age, void *data)
 {
 	const struct wlt_draw_ctx *ctx = data;
+	struct wlt_renderer *rend = ctx->rend;
 	uint8_t fr, fg, fb, br, bg, bb;
 	unsigned int x, y;
 	struct wlt_glyph *glyph;
+	bool skip;
 	int r;
+
+	x = posx * ctx->cell_width;
+	y = posy * ctx->cell_height;
+
+	/* If the cell is inside of the dirty-region *and* our age and the
+	 * cell age is non-zero *and* the cell-age is smaller than our age,
+	 * then skip drawing as it's already on-screen. */
+	skip = overlap(ctx, x, y, x + ctx->cell_width, y + ctx->cell_height);
+	skip = skip && age && rend->age && age <= rend->age;
+
+	if (skip)
+		return 0;
 
 	/* invert colors if requested */
 	if (attr->inverse) {
@@ -260,22 +282,19 @@ static int wlt_renderer_draw_cell(struct tsm_screen *screen, uint32_t id,
 		bb = attr->bb;
 	}
 
-	x = posx * ctx->cell_width;
-	y = posy * ctx->cell_height;
-
 	/* !len means background-only */
 	if (!len) {
-		wlt_renderer_fill(ctx->rend, x, y, ctx->cell_width * cwidth,
+		wlt_renderer_fill(rend, x, y, ctx->cell_width * cwidth,
 				  ctx->cell_height, br, bg, bb);
-		return 0;
+	} else {
+		r = wlt_face_render(ctx->face, &glyph, id, ch, len, cwidth);
+		if (r < 0)
+			wlt_renderer_fill(rend, x, y, ctx->cell_width * cwidth,
+					  ctx->cell_height, br, bg, bb);
+		else
+			wlt_renderer_blend(rend, glyph, x, y,
+					   fr, fg, fb, br, bg, bb);
 	}
-
-	r = wlt_face_render(ctx->face, &glyph, id, ch, len, cwidth);
-	if (r < 0)
-		return r;
-
-	wlt_renderer_blend(ctx->rend, glyph, x, y,
-			   fr, fg, fb, br, bg, bb);
 
 	return 0;
 }
@@ -290,7 +309,8 @@ void wlt_renderer_draw(const struct wlt_draw_ctx *ctx)
 	 * but at least it's fast enough to render a whole screen. */
 
 	cairo_surface_flush(rend->surface);
-	tsm_screen_draw(ctx->screen, wlt_renderer_draw_cell, (void*)ctx);
+	rend->age = tsm_screen_draw(ctx->screen, wlt_renderer_draw_cell,
+				    (void*)ctx);
 	cairo_surface_mark_dirty(rend->surface);
 
 	cairo_set_source_surface(ctx->cr, rend->surface, 0, 0);

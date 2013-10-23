@@ -88,6 +88,11 @@ struct wlt_draw_ctx {
 	unsigned int cell_width;
 	unsigned int cell_height;
 	struct tsm_screen *screen;
+
+	double x1;
+	double y1;
+	double x2;
+	double y2;
 };
 
 int wlt_renderer_new(struct wlt_renderer **out, unsigned int width,
