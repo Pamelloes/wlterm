@@ -265,7 +265,7 @@ static int wlt_renderer_draw_cell(struct tsm_screen *screen, uint32_t id,
 
 	/* !len means background-only */
 	if (!len) {
-		wlt_renderer_fill(ctx->rend, x, y, ctx->cell_width,
+		wlt_renderer_fill(ctx->rend, x, y, ctx->cell_width * cwidth,
 				  ctx->cell_height, br, bg, bb);
 		return 0;
 	}
