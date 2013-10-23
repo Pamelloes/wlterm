@@ -33,6 +33,7 @@
 #include <errno.h>
 #include <gtk/gtk.h>
 #include <libtsm.h>
+#include <paths.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -127,7 +128,11 @@ static void log_tsm(void *data, const char *file, int line, const char *fn,
 
 static void __attribute__((noreturn)) term_run_child(struct term *term)
 {
-	char **argv = (char*[]){ "/bin/sh", NULL };
+	char **argv = (char*[]){
+		getenv("SHELL") ? : _PATH_BSHELL,
+		"-i",
+		NULL
+	};
 
 	execve(argv[0], argv, environ);
 	exit(1);
