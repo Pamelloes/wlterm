@@ -79,6 +79,7 @@ static int wlt_renderer_realloc(struct wlt_renderer *rend, unsigned int width,
 	rend->stride = stride;
 	rend->data = data;
 	rend->surface = surface;
+	rend->age = 0;
 	return 0;
 }
 
@@ -118,6 +119,11 @@ int wlt_renderer_resize(struct wlt_renderer *rend, unsigned int width,
 			unsigned int height)
 {
 	return wlt_renderer_realloc(rend, width, height);
+}
+
+void wlt_renderer_dirty(struct wlt_renderer *rend)
+{
+	rend->age = 0;
 }
 
 static void wlt_renderer_fill(struct wlt_renderer *rend,

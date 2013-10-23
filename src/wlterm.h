@@ -101,6 +101,7 @@ int wlt_renderer_new(struct wlt_renderer **out, unsigned int width,
 void wlt_renderer_free(struct wlt_renderer *rend);
 int wlt_renderer_resize(struct wlt_renderer *rend, unsigned int width,
 			unsigned int height);
+void wlt_renderer_dirty(struct wlt_renderer *rend);
 void wlt_renderer_draw(const struct wlt_draw_ctx *ctx);
 
 #endif /* WLT_WLTERM_H */
