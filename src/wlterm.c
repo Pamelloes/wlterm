@@ -334,6 +334,7 @@ static gboolean term_redraw_cb(GtkWidget *widget, cairo_t *cr, gpointer data)
 	ctx.cell_width = term->cell_width;
 	ctx.cell_height = term->cell_height;
 	ctx.screen = term->screen;
+	ctx.vte = term->vte;
 	cairo_clip_extents(cr, &ctx.x1, &ctx.y1, &ctx.x2, &ctx.y2);
 
 	wlt_renderer_draw(&ctx);

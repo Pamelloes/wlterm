@@ -354,6 +354,8 @@ static int wlt_renderer_draw_cell(struct tsm_screen *screen, uint32_t id,
 void wlt_renderer_draw(const struct wlt_draw_ctx *ctx)
 {
 	struct wlt_renderer *rend = ctx->rend;
+	struct tsm_screen_attr attr;
+	unsigned int w, h;
 
 	/* cairo is *way* too slow to render all masks efficiently. Therefore,
 	 * we render all glyphs into a shadow buffer on the CPU and then tell
@@ -367,4 +369,21 @@ void wlt_renderer_draw(const struct wlt_draw_ctx *ctx)
 
 	cairo_set_source_surface(ctx->cr, rend->surface, 0, 0);
 	cairo_paint(ctx->cr);
+
+	/* draw padding */
+	w = tsm_screen_get_width(ctx->screen);
+	h = tsm_screen_get_height(ctx->screen);
+	tsm_vte_get_def_attr(ctx->vte, &attr);
+	cairo_set_source_rgb(ctx->cr,
+			     attr.br / 255.0,
+			     attr.bg / 255.0,
+			     attr.bb / 255.0);
+	cairo_move_to(ctx->cr, w * ctx->cell_width, 0);
+	cairo_line_to(ctx->cr, w * ctx->cell_width, h * ctx->cell_height);
+	cairo_line_to(ctx->cr, 0, h * ctx->cell_height);
+	cairo_line_to(ctx->cr, 0, rend->height);
+	cairo_line_to(ctx->cr, rend->width, rend->height);
+	cairo_line_to(ctx->cr, rend->width, 0);
+	cairo_close_path(ctx->cr);
+	cairo_fill(ctx->cr);
 }

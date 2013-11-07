@@ -89,6 +89,7 @@ struct wlt_draw_ctx {
 	unsigned int cell_width;
 	unsigned int cell_height;
 	struct tsm_screen *screen;
+	struct tsm_vte *vte;
 
 	double x1;
 	double y1;
