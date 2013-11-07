@@ -73,6 +73,7 @@ struct term {
 };
 
 static gboolean show_dirty;
+static gboolean snap_size;
 
 static void err(const char *format, ...)
 {
@@ -154,7 +155,7 @@ static void term_set_geometry(struct term *term)
 	geometry.min_height = geometry.base_height;
 
 	hints = GDK_HINT_MIN_SIZE | GDK_HINT_BASE_SIZE;
-	if (term->adjust_size)
+	if (snap_size && term->adjust_size)
 		hints |= GDK_HINT_RESIZE_INC;
 
 	gtk_window_set_geometry_hints(GTK_WINDOW(term->window), term->tarea,
@@ -528,6 +529,7 @@ static void term_hide(struct term *term)
 
 static GOptionEntry opts[] = {
 	{ "show-dirty", 0, 0, G_OPTION_ARG_NONE, &show_dirty, "Mark dirty cells during redraw", NULL },
+	{ "snap-size", 0, 0, G_OPTION_ARG_NONE, &snap_size, "Snap to next cell-size when resizing", NULL },
 	{ NULL }
 };
 
