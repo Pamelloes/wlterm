@@ -130,7 +130,7 @@ static void __attribute__((noreturn)) term_run_child(struct term *term)
 {
 	char **argv = (char*[]){
 		getenv("SHELL") ? : _PATH_BSHELL,
-		"-i",
+		"-il",
 		NULL
 	};
 
