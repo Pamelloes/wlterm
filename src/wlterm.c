@@ -72,6 +72,8 @@ struct term {
 	unsigned int exited : 1;
 };
 
+static gboolean show_dirty;
+
 static void err(const char *format, ...)
 {
 	va_list list;
@@ -328,6 +330,7 @@ static gboolean term_redraw_cb(GtkWidget *widget, cairo_t *cr, gpointer data)
 	start = g_get_monotonic_time();
 
 	memset(&ctx, 0, sizeof(ctx));
+	ctx.debug = show_dirty;
 	ctx.rend = term->rend;
 	ctx.cr = cr;
 	ctx.face = term->face;
@@ -523,12 +526,27 @@ static void term_hide(struct term *term)
 		gtk_widget_hide(term->window);
 }
 
+static GOptionEntry opts[] = {
+	{ "show-dirty", 0, 0, G_OPTION_ARG_NONE, &show_dirty, "Mark dirty cells during redraw", NULL },
+	{ NULL }
+};
+
 int main(int argc, char **argv)
 {
 	struct term *term;
 	int r;
+	GOptionContext *opt;
+	GError *e = NULL;
 
-	gtk_init(&argc, &argv);
+	opt = g_option_context_new("- Wayland Terminal Emulator");
+	g_option_context_add_main_entries(opt, opts, NULL);
+	g_option_context_add_group(opt, gtk_get_option_group(TRUE));
+	if (!g_option_context_parse(opt, &argc, &argv, &e)) {
+		g_print("cannot parse arguments: %s\n", e->message);
+		g_error_free(e);
+		r = -EINVAL;
+		goto error;
+	}
 
 	r = term_new(&term);
 	if (r < 0)
