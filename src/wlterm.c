@@ -134,6 +134,7 @@ static void __attribute__((noreturn)) term_run_child(struct term *term)
 		NULL
 	};
 
+	setenv("TERM", "xterm-256color", 1);
 	execve(argv[0], argv, environ);
 	exit(1);
 }
