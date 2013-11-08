@@ -33,6 +33,7 @@
 #include <errno.h>
 #include <gtk/gtk.h>
 #include <libtsm.h>
+#include <math.h>
 #include <paths.h>
 #include <stdarg.h>
 #include <stdbool.h>
@@ -66,6 +67,11 @@ struct term {
 	unsigned int height;
 	unsigned int columns;
 	unsigned int rows;
+
+	unsigned int sel;
+	guint32 sel_start;
+	gdouble sel_x;
+	gdouble sel_y;
 
 	unsigned int adjust_size : 1;
 	unsigned int initialized : 1;
@@ -284,7 +290,11 @@ static gboolean term_configure_cb(GtkWidget *widget, GdkEvent *ev,
 
 		wnd = gtk_widget_get_window(term->window);
 		mask = gdk_window_get_events(wnd);
-		gdk_window_set_events(wnd, mask | GDK_KEY_PRESS_MASK);
+		mask |= GDK_KEY_PRESS_MASK;
+		mask |= GDK_BUTTON_MOTION_MASK;
+		mask |= GDK_BUTTON_PRESS_MASK;
+		mask |= GDK_BUTTON_RELEASE_MASK;
+		gdk_window_set_events(wnd, mask);
 
 		term->initialized = 1;
 		term_notify_resize(term);
@@ -383,6 +393,76 @@ static gboolean term_key_cb(GtkWidget *widget, GdkEvent *ev, gpointer data)
 
 	return tsm_vte_handle_keyboard(term->vte, e->keyval, 0,
 				       mods, xkb_keysym_to_utf32(e->keyval));
+}
+
+static gboolean term_button_cb(GtkWidget *widget, GdkEvent *ev,
+				     gpointer data)
+{
+	GdkEventButton *e = (void*)ev;
+	struct term *term = data;
+
+	if (e->button != 1)
+		return FALSE;
+
+	if (e->type == GDK_BUTTON_PRESS) {
+		term->sel = 1;
+		term->sel_start = e->time;
+		term->sel_x = e->x;
+		term->sel_y = e->y;
+	} else if (e->type == GDK_2BUTTON_PRESS) {
+		term->sel = 2;
+		/* TODO: select word */
+		tsm_screen_selection_start(term->screen,
+					   e->x / term->cell_width,
+					   e->y / term->cell_height);
+		gtk_widget_queue_draw(term->tarea);
+	} else if (e->type == GDK_3BUTTON_PRESS) {
+		term->sel = 2;
+		/* TODO: select line */
+		tsm_screen_selection_start(term->screen,
+					   e->x / term->cell_width,
+					   e->y / term->cell_height);
+		gtk_widget_queue_draw(term->tarea);
+	} else if (e->type == GDK_BUTTON_RELEASE) {
+		if (term->sel == 1 && term->sel_start + 100 > e->time) {
+			tsm_screen_selection_reset(term->screen);
+			gtk_widget_queue_draw(term->tarea);
+		} else if (term->sel > 1) {
+			/* TODO: copy */
+		}
+
+		term->sel = 0;
+	}
+
+	return TRUE;
+}
+
+static gboolean term_motion_cb(GtkWidget *widget, GdkEvent *ev,
+			       gpointer data)
+{
+	GdkEventMotion *e = (void*)ev;
+	struct term *term = data;
+
+	if (!term->sel)
+		return TRUE;
+
+	if (term->sel == 1) {
+		if (fabs(term->sel_x - e->x) > 3 ||
+		    fabs(term->sel_y - e->y) > 3) {
+			term->sel = 2;
+			tsm_screen_selection_start(term->screen,
+						   term->sel_x / term->cell_width,
+						   term->sel_y / term->cell_height);
+			gtk_widget_queue_draw(term->tarea);
+		}
+	} else {
+		tsm_screen_selection_target(term->screen,
+					    e->x / term->cell_width,
+					    e->y / term->cell_height);
+		gtk_widget_queue_draw(term->tarea);
+	}
+
+	return FALSE;
 }
 
 static gboolean term_pty_idle_cb(gpointer data)
@@ -493,6 +573,12 @@ static int term_new(struct term **out)
 			 term);
 	g_signal_connect(term->window, "key-press-event",
 			 G_CALLBACK(term_key_cb), term);
+	g_signal_connect(term->window, "button-press-event",
+			 G_CALLBACK(term_button_cb), term);
+	g_signal_connect(term->window, "button-release-event",
+			 G_CALLBACK(term_button_cb), term);
+	g_signal_connect(term->window, "motion-notify-event",
+			 G_CALLBACK(term_motion_cb), term);
 
 	term->tarea = gtk_drawing_area_new();
 	g_signal_connect(term->tarea, "configure-event",
