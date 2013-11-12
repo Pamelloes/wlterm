@@ -422,6 +422,16 @@ static gboolean term_key_cb(GtkWidget *widget, GdkEvent *ev, gpointer data)
 			tsm_screen_sb_down(term->screen, 1);
 			gtk_widget_queue_draw(term->tarea);
 			return TRUE;
+		} else if (key == GDK_KEY_Page_Up &&
+		    ((e->state & ~cmod & ALL_MODS) == GDK_SHIFT_MASK)) {
+			tsm_screen_sb_page_up(term->screen, 1);
+			gtk_widget_queue_draw(term->tarea);
+			return TRUE;
+		} else if (key == GDK_KEY_Page_Down &&
+		    ((e->state & ~cmod & ALL_MODS) == GDK_SHIFT_MASK)) {
+			tsm_screen_sb_page_down(term->screen, 1);
+			gtk_widget_queue_draw(term->tarea);
+			return TRUE;
 		}
 	}
 
