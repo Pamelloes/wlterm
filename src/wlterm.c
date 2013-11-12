@@ -46,6 +46,7 @@
 
 struct term {
 	GtkWidget *window;
+	GdkKeymap *keymap;
 	GtkWidget *tarea;
 	struct wlt_font *font;
 	struct tsm_screen *screen;
@@ -80,6 +81,7 @@ struct term {
 
 static gboolean show_dirty;
 static gboolean snap_size;
+static gint sb_size = 2000;
 
 static void err(const char *format, ...)
 {
@@ -371,11 +373,17 @@ static void term_destroy_cb(GtkWidget *widget, gpointer data)
 		gtk_main_quit();
 }
 
+#define ALL_MODS (GDK_SHIFT_MASK | GDK_LOCK_MASK | GDK_CONTROL_MASK | \
+		  GDK_MOD1_MASK | GDK_MOD4_MASK)
+
 static gboolean term_key_cb(GtkWidget *widget, GdkEvent *ev, gpointer data)
 {
 	struct term *term = data;
 	GdkEventKey *e = (void*)ev;
 	unsigned int mods = 0;
+	gboolean b;
+	GdkModifierType cmod;
+	guint key;
 
 	if (e->type != GDK_KEY_PRESS)
 		return FALSE;
@@ -391,8 +399,39 @@ static gboolean term_key_cb(GtkWidget *widget, GdkEvent *ev, gpointer data)
 	if (e->state & GDK_MOD4_MASK)
 		mods |= TSM_LOGO_MASK;
 
-	return tsm_vte_handle_keyboard(term->vte, e->keyval, 0,
-				       mods, xkb_keysym_to_utf32(e->keyval));
+	if (!term->keymap)
+		term->keymap = gdk_keymap_get_default();
+
+	b = gdk_keymap_translate_keyboard_state(term->keymap,
+				e->hardware_keycode,
+				e->state,
+				e->group,
+				&key,
+				NULL,
+				NULL,
+				&cmod);
+
+	if (b) {
+		if (key == GDK_KEY_Up &&
+		    ((e->state & ~cmod & ALL_MODS) == GDK_SHIFT_MASK)) {
+			tsm_screen_sb_up(term->screen, 1);
+			gtk_widget_queue_draw(term->tarea);
+			return TRUE;
+		} else if (key == GDK_KEY_Down &&
+		    ((e->state & ~cmod & ALL_MODS) == GDK_SHIFT_MASK)) {
+			tsm_screen_sb_down(term->screen, 1);
+			gtk_widget_queue_draw(term->tarea);
+			return TRUE;
+		}
+	}
+
+	if (tsm_vte_handle_keyboard(term->vte, e->keyval, 0,
+				    mods, xkb_keysym_to_utf32(e->keyval))) {
+		tsm_screen_sb_reset(term->screen);
+		return TRUE;
+	}
+
+	return FALSE;
 }
 
 static gboolean term_button_cb(GtkWidget *widget, GdkEvent *ev,
@@ -548,6 +587,8 @@ static int term_new(struct term **out)
 	if (r < 0)
 		goto err_font;
 
+	tsm_screen_set_max_sb(term->screen, sb_size > 0 ? sb_size : 0);
+
 	r = tsm_vte_new(&term->vte, term->screen, term_write_cb, term,
 			log_tsm, term);
 	if (r < 0)
@@ -616,6 +657,7 @@ static void term_hide(struct term *term)
 static GOptionEntry opts[] = {
 	{ "show-dirty", 0, 0, G_OPTION_ARG_NONE, &show_dirty, "Mark dirty cells during redraw", NULL },
 	{ "snap-size", 0, 0, G_OPTION_ARG_NONE, &snap_size, "Snap to next cell-size when resizing", NULL },
+	{ "sb-size", 0, 0, G_OPTION_ARG_INT, &sb_size, "Scroll-back buffer size in lines", NULL },
 	{ NULL }
 };
 
