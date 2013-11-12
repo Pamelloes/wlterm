@@ -384,6 +384,7 @@ static gboolean term_key_cb(GtkWidget *widget, GdkEvent *ev, gpointer data)
 	gboolean b;
 	GdkModifierType cmod;
 	guint key;
+	uint32_t ucs4;
 
 	if (e->type != GDK_KEY_PRESS)
 		return FALSE;
@@ -435,8 +436,11 @@ static gboolean term_key_cb(GtkWidget *widget, GdkEvent *ev, gpointer data)
 		}
 	}
 
-	if (tsm_vte_handle_keyboard(term->vte, e->keyval, 0,
-				    mods, xkb_keysym_to_utf32(e->keyval))) {
+	ucs4 = xkb_keysym_to_utf32(e->keyval);
+	if (!ucs4)
+		ucs4 = TSM_VTE_INVALID;
+
+	if (tsm_vte_handle_keyboard(term->vte, e->keyval, 0, mods, ucs4)) {
 		tsm_screen_sb_reset(term->screen);
 		return TRUE;
 	}
