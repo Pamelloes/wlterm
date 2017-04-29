@@ -197,11 +197,11 @@ static int term_change_font(struct term *term)
 	{
 		int index = i;
 		if (no_bold)
-			i &= ~WLT_FACE_BOLD;
+			index &= ~WLT_FACE_BOLD;
 		if (no_underline)
-			i &= ~WLT_FACE_UNDERLINE;
+			index &= ~WLT_FACE_UNDERLINE;
 		if (no_italics)
-			i &= ~WLT_FACE_ITALICS;
+			index &= ~WLT_FACE_ITALICS;
 
 		if (index != i)
 		{
