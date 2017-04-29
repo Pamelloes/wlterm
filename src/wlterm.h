@@ -67,9 +67,15 @@ int wlt_font_new(struct wlt_font **out);
 void wlt_font_ref(struct wlt_font *font);
 void wlt_font_unref(struct wlt_font *font);
 
+enum wlt_face_attrs {
+	WLT_FACE_PLAIN = 0,
+	WLT_FACE_BOLD = 1 << 0,
+	WLT_FACE_UNDERLINE = 1 << 1,
+	WLT_FACE_ITALICS = 1 << 2,
+};
+
 int wlt_face_new(struct wlt_face **out, struct wlt_font *font,
-		 const char *desc_str, int desc_size, int desc_bold,
-		 int desc_italic);
+		 const char *desc_str, int desc_size, int attrs);
 void wlt_face_ref(struct wlt_face *face);
 void wlt_face_unref(struct wlt_face *face);
 unsigned int wlt_face_get_width(struct wlt_face *face);
@@ -85,7 +91,7 @@ struct wlt_draw_ctx {
 	bool debug;
 	struct wlt_renderer *rend;
 	cairo_t *cr;
-	struct wlt_face *face;
+	struct wlt_face *faces[8];
 	unsigned int cell_width;
 	unsigned int cell_height;
 	struct tsm_screen *screen;

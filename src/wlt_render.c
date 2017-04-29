@@ -297,6 +297,7 @@ static int wlt_renderer_draw_cell(struct tsm_screen *screen, uint32_t id,
 	struct wlt_renderer *rend = ctx->rend;
 	uint8_t fr, fg, fb, br, bg, bb;
 	unsigned int x, y;
+	int fattrs;
 	struct wlt_glyph *glyph;
 	bool skip;
 	int r;
@@ -313,8 +314,16 @@ static int wlt_renderer_draw_cell(struct tsm_screen *screen, uint32_t id,
 	if (skip && !ctx->debug)
 		return 0;
 
+	fattrs = WLT_FACE_PLAIN;
+	if (attr->bold)
+		fattrs |= WLT_FACE_BOLD;
+	if (attr->underline)
+		fattrs |= WLT_FACE_UNDERLINE;
+	if (attr->italic)
+		fattrs |= WLT_FACE_ITALICS;
+
 	/* invert colors if requested */
-	if (attr->inverse) {
+	if (attr->inverse != attr->cursor) {
 		fr = attr->br;
 		fg = attr->bg;
 		fb = attr->bb;
@@ -335,7 +344,7 @@ static int wlt_renderer_draw_cell(struct tsm_screen *screen, uint32_t id,
 		wlt_renderer_fill(rend, x, y, ctx->cell_width * cwidth,
 				  ctx->cell_height, br, bg, bb);
 	} else {
-		r = wlt_face_render(ctx->face, &glyph, id, ch, len, cwidth);
+		r = wlt_face_render(ctx->faces[fattrs], &glyph, id, ch, len, cwidth);
 		if (r < 0)
 			wlt_renderer_fill(rend, x, y, ctx->cell_width * cwidth,
 					  ctx->cell_height, br, bg, bb);
@@ -374,10 +383,7 @@ void wlt_renderer_draw(const struct wlt_draw_ctx *ctx)
 	w = tsm_screen_get_width(ctx->screen);
 	h = tsm_screen_get_height(ctx->screen);
 	tsm_vte_get_def_attr(ctx->vte, &attr);
-	cairo_set_source_rgb(ctx->cr,
-			     attr.br / 255.0,
-			     attr.bg / 255.0,
-			     attr.bb / 255.0);
+	cairo_set_source_rgb(ctx->cr, 0, 0, 0);
 	cairo_move_to(ctx->cr, w * ctx->cell_width, 0);
 	cairo_line_to(ctx->cr, w * ctx->cell_width, h * ctx->cell_height);
 	cairo_line_to(ctx->cr, 0, h * ctx->cell_height);

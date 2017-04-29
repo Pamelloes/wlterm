@@ -57,6 +57,7 @@ struct wlt_face {
 	unsigned int width;
 	unsigned int height;
 	unsigned int baseline;
+	bool underline;
 };
 
 #define wlt_to_glyph(_id) \
@@ -164,6 +165,8 @@ static void measure_pango(struct wlt_face *face)
 				  "@!\"$%&/()=?\\}][{°^~+*#'<>|-_.:,;`´";
 	static const size_t str_len = sizeof(str) - 1;
 	PangoLayout *layout;
+	PangoAttrList *attrl;
+	PangoAttribute *uline;
 	PangoRectangle rec;
 
 	layout = pango_layout_new(face->ctx);
@@ -171,6 +174,15 @@ static void measure_pango(struct wlt_face *face)
 	pango_layout_set_height(layout, 0);
 	pango_layout_set_spacing(layout, 0);
 	pango_layout_set_text(layout, str, str_len);
+
+	if (face->underline) {
+		attrl = pango_attr_list_new();
+		uline = pango_attr_underline_new(PANGO_UNDERLINE_SINGLE);
+		pango_attr_list_insert(attrl, uline);
+		pango_layout_set_attributes(layout, attrl);
+		pango_attr_list_unref(attrl);
+	}
+
 	pango_layout_get_pixel_extents(layout, NULL, &rec);
 
 	/* We use an example layout to render a bunch of ASCII characters in a
@@ -209,8 +221,7 @@ static int init_pango(struct wlt_face *face, const char *desc_str,
 }
 
 int wlt_face_new(struct wlt_face **out, struct wlt_font *font,
-		 const char *desc_str, int desc_size, int desc_bold,
-		 int desc_italic)
+		 const char *desc_str, int desc_size, int attrs)
 {
 	struct wlt_face *face;
 	int r;
@@ -224,7 +235,9 @@ int wlt_face_new(struct wlt_face **out, struct wlt_font *font,
 	shl_htable_init_ulong(&face->glyphs);
 	face->ctx = pango_font_map_create_context(font->map);
 
-	r = init_pango(face, desc_str, desc_size, desc_bold, desc_italic);
+	face->underline = attrs & WLT_FACE_UNDERLINE;
+	r = init_pango(face, desc_str, desc_size, attrs & WLT_FACE_BOLD, 
+	               attrs & WLT_FACE_ITALICS);
 	if (r < 0)
 		goto err_ctx;
 
@@ -294,6 +307,8 @@ static int create_glyph(struct wlt_face *face, struct wlt_glyph *glyph,
 	PangoRectangle rec;
 	cairo_format_t format;
 	PangoLayout *layout;
+	PangoAttrList *attrl;
+	PangoAttribute *uline;
 	cairo_t *cr;
 	size_t cnt;
 	glong ulen;
@@ -343,6 +358,14 @@ static int create_glyph(struct wlt_face *face, struct wlt_glyph *glyph,
 	pango_layout_set_text(layout, val, ulen);
 
 	g_free(val);
+
+	if (face->underline) {
+		attrl = pango_attr_list_new();
+		uline = pango_attr_underline_new(PANGO_UNDERLINE_SINGLE);
+		pango_attr_list_insert(attrl, uline);
+		pango_layout_set_attributes(layout, attrl);
+		pango_attr_list_unref(attrl);
+	}
 
 	cnt = pango_layout_get_line_count(layout);
 	if (cnt == 0) {

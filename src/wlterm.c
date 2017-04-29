@@ -61,7 +61,7 @@ struct term {
 	guint child_src;
 
 	struct wlt_renderer *rend;
-	struct wlt_face *face;
+	struct wlt_face *faces[8];
 	unsigned int scale;
 	double iscale;
 	unsigned int cell_width;
@@ -84,6 +84,9 @@ struct term {
 static gboolean show_dirty;
 static gboolean snap_size;
 static gint sb_size = 2000;
+static gboolean no_bold;
+static gboolean no_underline;
+static gboolean no_italics;
 
 static void err(const char *format, ...)
 {
@@ -186,19 +189,48 @@ static void term_recalc_cells(struct term *term)
 
 static int term_change_font(struct term *term)
 {
-	struct wlt_face *old;
-	int r;
+	int r, i;
+	struct wlt_face *new[8];
 
-	old = term->face;
-	r = wlt_face_new(&term->face, term->font, "monospace",
-			 term->scale * 11, 0, 0);
+	i = 0;
+	for (int i = 0; i < 8; ++i)
+	{
+		int index = i;
+		if (no_bold)
+			i &= ~WLT_FACE_BOLD;
+		if (no_underline)
+			i &= ~WLT_FACE_UNDERLINE;
+		if (no_italics)
+			i &= ~WLT_FACE_ITALICS;
+
+		if (index != i)
+		{
+			new[i] = new[index];
+			wlt_face_ref(new[i]);
+			continue;
+		}
+
+		r = wlt_face_new(&new[i], term->font, "monospace",
+		                 term->scale * 12, index);
+		if (r < 0)
+			break;
+	}
+
 	if (r < 0)
+	{
+		for (--i; i >= 0; --i)
+			wlt_face_unref(new[i]);
 		return r;
+	}
 
-	wlt_face_unref(old);
+	for (i = 0; i < 8; ++i)
+	{
+		wlt_face_unref(term->faces[i]);
+		term->faces[i] = new[i];
+	}
 
-	term->cell_width = wlt_face_get_width(term->face);
-	term->cell_height = wlt_face_get_height(term->face);
+	term->cell_width = wlt_face_get_width(term->faces[0]);
+	term->cell_height = wlt_face_get_height(term->faces[0]);
 
 	return 0;
 }
@@ -344,15 +376,13 @@ static gboolean term_redraw_cb(GtkWidget *widget, cairo_t *cr, gpointer data)
 	if (!term->initialized)
 		return FALSE;
 
-	printf("scale: %d\n", term->scale);
-
 	start = g_get_monotonic_time();
 
 	memset(&ctx, 0, sizeof(ctx));
 	ctx.debug = show_dirty;
 	ctx.rend = term->rend;
 	ctx.cr = cr;
-	ctx.face = term->face;
+	memcpy(ctx.faces, term->faces, sizeof(term->faces));
 	ctx.cell_width = term->cell_width;
 	ctx.cell_height = term->cell_height;
 	ctx.screen = term->screen;
@@ -583,7 +613,8 @@ static void term_free(struct term *term)
 	tsm_vte_unref(term->vte);
 	tsm_screen_unref(term->screen);
 	wlt_renderer_free(term->rend);
-	wlt_face_unref(term->face);
+	for (int i = 0; i < 8; ++i)
+		wlt_face_unref(term->faces[i]);
 	wlt_font_unref(term->font);
 	if (term->window)
 		gtk_widget_destroy(term->window);
@@ -614,6 +645,10 @@ static int term_new(struct term **out)
 			log_tsm, term);
 	if (r < 0)
 		goto err_screen;
+
+	r = tsm_vte_set_palette(term->vte, "os-x");
+	if (r < 0)
+		goto err_vte;
 
 	term->pty_bridge = shl_pty_bridge_new();
 	if (term->pty_bridge < 0) {
@@ -682,6 +717,9 @@ static GOptionEntry opts[] = {
 	{ "show-dirty", 0, 0, G_OPTION_ARG_NONE, &show_dirty, "Mark dirty cells during redraw", NULL },
 	{ "snap-size", 0, 0, G_OPTION_ARG_NONE, &snap_size, "Snap to next cell-size when resizing", NULL },
 	{ "sb-size", 0, 0, G_OPTION_ARG_INT, &sb_size, "Scroll-back buffer size in lines", NULL },
+	{ "no-bold", 0, 0, G_OPTION_ARG_NONE, &no_bold, "Disable bold text", NULL },
+	{ "no-underline", 0, 0, G_OPTION_ARG_NONE, &no_underline, "Disable undelined text", NULL },
+	{ "no-italics", 0, 0, G_OPTION_ARG_NONE, &no_italics, "Disable italicized text", NULL },
 	{ NULL }
 };
 
