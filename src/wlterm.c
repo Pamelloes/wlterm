@@ -191,11 +191,11 @@ static int term_change_font(struct term *term)
 	for (int i = 0; i < 8; ++i)
 	{
 		int index = i;
-		if (wlt_config_get_no_bold(term->config))
+		if (!wlt_config_get_bold(term->config))
 			index &= ~WLT_FACE_BOLD;
-		if (wlt_config_get_no_underline(term->config))
+		if (!wlt_config_get_underline(term->config))
 			index &= ~WLT_FACE_UNDERLINE;
-		if (wlt_config_get_no_italics(term->config))
+		if (!wlt_config_get_italics(term->config))
 			index &= ~WLT_FACE_ITALICS;
 
 		if (index != i)
@@ -648,9 +648,12 @@ static int term_new(struct term **out, struct wlt_config *config)
 	if (r < 0)
 		goto err_screen;
 
-	r = tsm_vte_set_palette(term->vte, "os-x");
-	if (r < 0)
-		goto err_vte;
+	const char *palette = wlt_config_get_palette(term->config);
+	if (palette) {
+		r = tsm_vte_set_palette(term->vte, palette);
+		if (r < 0)
+			goto err_vte;
+	}
 
 	term->pty_bridge = shl_pty_bridge_new();
 	if (term->pty_bridge < 0) {

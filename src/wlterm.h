@@ -52,9 +52,11 @@ bool wlt_config_get_snap_size(struct wlt_config *config);
 int wlt_config_get_sb_size(struct wlt_config *config);
 const char *wlt_config_get_font_name(struct wlt_config *config);
 int wlt_config_get_font_size(struct wlt_config *config);
-bool wlt_config_get_no_bold(struct wlt_config *config);
-bool wlt_config_get_no_underline(struct wlt_config *config);
-bool wlt_config_get_no_italics(struct wlt_config *config);
+bool wlt_config_get_bold(struct wlt_config *config);
+bool wlt_config_get_underline(struct wlt_config *config);
+bool wlt_config_get_italics(struct wlt_config *config);
+/* This will be null if no palette is specified */
+const char *wlt_config_get_palette(struct wlt_config *config);
 
 
 /* fonts */
