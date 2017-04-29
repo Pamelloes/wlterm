@@ -45,6 +45,8 @@
 #include "wlterm.h"
 
 struct term {
+	struct wlt_config *config;
+
 	GtkWidget *window;
 	GdkKeymap *keymap;
 	GtkWidget *tarea;
@@ -80,13 +82,6 @@ struct term {
 	unsigned int initialized : 1;
 	unsigned int exited : 1;
 };
-
-static gboolean show_dirty;
-static gboolean snap_size;
-static gint sb_size = 2000;
-static gboolean no_bold;
-static gboolean no_underline;
-static gboolean no_italics;
 
 static void err(const char *format, ...)
 {
@@ -168,7 +163,7 @@ static void term_set_geometry(struct term *term)
 	geometry.min_height = geometry.base_height;
 
 	hints = GDK_HINT_MIN_SIZE | GDK_HINT_BASE_SIZE;
-	if (snap_size && term->adjust_size)
+	if (wlt_config_get_snap_size(term->config) && term->adjust_size)
 		hints |= GDK_HINT_RESIZE_INC;
 
 	gtk_window_set_geometry_hints(GTK_WINDOW(term->window), term->tarea,
@@ -196,11 +191,11 @@ static int term_change_font(struct term *term)
 	for (int i = 0; i < 8; ++i)
 	{
 		int index = i;
-		if (no_bold)
+		if (wlt_config_get_no_bold(term->config))
 			index &= ~WLT_FACE_BOLD;
-		if (no_underline)
+		if (wlt_config_get_no_underline(term->config))
 			index &= ~WLT_FACE_UNDERLINE;
-		if (no_italics)
+		if (wlt_config_get_no_italics(term->config))
 			index &= ~WLT_FACE_ITALICS;
 
 		if (index != i)
@@ -210,8 +205,10 @@ static int term_change_font(struct term *term)
 			continue;
 		}
 
-		r = wlt_face_new(&new[i], term->font, "monospace",
-		                 term->scale * 12, index);
+		r = wlt_face_new(&new[i], term->font, 
+		                 wlt_config_get_font_name(term->config),
+		                 term->scale * wlt_config_get_font_size(term->config),
+		                 index);
 		if (r < 0)
 			break;
 	}
@@ -379,7 +376,7 @@ static gboolean term_redraw_cb(GtkWidget *widget, cairo_t *cr, gpointer data)
 	start = g_get_monotonic_time();
 
 	memset(&ctx, 0, sizeof(ctx));
-	ctx.debug = show_dirty;
+	ctx.debug = wlt_config_get_show_dirty(term->config);
 	ctx.rend = term->rend;
 	ctx.cr = cr;
 	memcpy(ctx.faces, term->faces, sizeof(term->faces));
@@ -618,18 +615,22 @@ static void term_free(struct term *term)
 	wlt_font_unref(term->font);
 	if (term->window)
 		gtk_widget_destroy(term->window);
+	wlt_config_unref(term->config);
 	free(term);
 }
 
-static int term_new(struct term **out)
+static int term_new(struct term **out, struct wlt_config *config)
 {
 	struct term *term;
-	int r;
+	int sb_size, r;
 
 	term = calloc(1, sizeof(*term));
 	if (!term)
 		return -ENOMEM;
 	term->adjust_size = 1;
+
+	term->config = config;
+	wlt_config_ref(term->config);
 
 	r = wlt_font_new(&term->font);
 	if (r < 0)
@@ -639,6 +640,7 @@ static int term_new(struct term **out)
 	if (r < 0)
 		goto err_font;
 
+	sb_size = wlt_config_get_sb_size(term->config);
 	tsm_screen_set_max_sb(term->screen, sb_size > 0 ? sb_size : 0);
 
 	r = tsm_vte_new(&term->vte, term->screen, term_write_cb, term,
@@ -697,6 +699,7 @@ err_screen:
 err_font:
 	wlt_font_unref(term->font);
 err_free:
+	wlt_config_unref(term->config);
 	free(term);
 	return r;
 }
@@ -713,34 +716,17 @@ static void term_hide(struct term *term)
 		gtk_widget_hide(term->window);
 }
 
-static GOptionEntry opts[] = {
-	{ "show-dirty", 0, 0, G_OPTION_ARG_NONE, &show_dirty, "Mark dirty cells during redraw", NULL },
-	{ "snap-size", 0, 0, G_OPTION_ARG_NONE, &snap_size, "Snap to next cell-size when resizing", NULL },
-	{ "sb-size", 0, 0, G_OPTION_ARG_INT, &sb_size, "Scroll-back buffer size in lines", NULL },
-	{ "no-bold", 0, 0, G_OPTION_ARG_NONE, &no_bold, "Disable bold text", NULL },
-	{ "no-underline", 0, 0, G_OPTION_ARG_NONE, &no_underline, "Disable undelined text", NULL },
-	{ "no-italics", 0, 0, G_OPTION_ARG_NONE, &no_italics, "Disable italicized text", NULL },
-	{ NULL }
-};
-
 int main(int argc, char **argv)
 {
+	struct wlt_config *config;
 	struct term *term;
 	int r;
-	GOptionContext *opt;
-	GError *e = NULL;
 
-	opt = g_option_context_new("- Wayland Terminal Emulator");
-	g_option_context_add_main_entries(opt, opts, NULL);
-	g_option_context_add_group(opt, gtk_get_option_group(TRUE));
-	if (!g_option_context_parse(opt, &argc, &argv, &e)) {
-		g_print("cannot parse arguments: %s\n", e->message);
-		g_error_free(e);
-		r = -EINVAL;
-		goto error;
-	}
+	r = wlt_config_new(&config, argc, argv);
+	if (r < 0)
+		return -r;
 
-	r = term_new(&term);
+	r = term_new(&term, config);
 	if (r < 0)
 		goto error;
 
@@ -749,10 +735,12 @@ int main(int argc, char **argv)
 	term->exited = 1;
 	term_hide(term);
 	term_free(term);
+	wlt_config_unref(config);
 
 	return 0;
 
 error:
+	wlt_config_unref(config);
 	errno = -r;
 	err("cannot initialize terminal: %m");
 	return -r;

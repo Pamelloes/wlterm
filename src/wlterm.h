@@ -34,11 +34,28 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+
 /* types */
 
+struct wlt_config;
 struct wlt_font;
 struct wlt_face;
 struct wlt_renderer;
+
+/* config */
+
+int wlt_config_new(struct wlt_config **out, int argc, char **argv);
+void wlt_config_ref(struct wlt_config *config);
+void wlt_config_unref(struct wlt_config *config);
+bool wlt_config_get_show_dirty(struct wlt_config *config);
+bool wlt_config_get_snap_size(struct wlt_config *config);
+int wlt_config_get_sb_size(struct wlt_config *config);
+const char *wlt_config_get_font_name(struct wlt_config *config);
+int wlt_config_get_font_size(struct wlt_config *config);
+bool wlt_config_get_no_bold(struct wlt_config *config);
+bool wlt_config_get_no_underline(struct wlt_config *config);
+bool wlt_config_get_no_italics(struct wlt_config *config);
+
 
 /* fonts */
 
