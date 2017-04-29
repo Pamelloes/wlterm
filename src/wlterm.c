@@ -62,6 +62,8 @@ struct term {
 
 	struct wlt_renderer *rend;
 	struct wlt_face *face;
+	unsigned int scale;
+	double iscale;
 	unsigned int cell_width;
 	unsigned int cell_height;
 	unsigned int width;
@@ -173,8 +175,8 @@ static void term_set_geometry(struct term *term)
 
 static void term_recalc_cells(struct term *term)
 {
-	term->columns = term->width / term->cell_width;
-	term->rows = term->height / term->cell_height;
+	term->columns = term->scale * term->width / term->cell_width;
+	term->rows = term->scale * term->height / term->cell_height;
 
 	if (!term->columns)
 		term->columns = 1;
@@ -189,7 +191,7 @@ static int term_change_font(struct term *term)
 
 	old = term->face;
 	r = wlt_face_new(&term->face, term->font, "monospace",
-			 WLT_FACE_DONT_CARE, 0, 0);
+			 term->scale * 11, 0, 0);
 	if (r < 0)
 		return r;
 
@@ -247,7 +249,8 @@ static gboolean term_configure_cb(GtkWidget *widget, GdkEvent *ev,
 
 	/* Initial configure-event, setup fonts, pty, etc. */
 	if (!term->initialized) {
-		r = wlt_renderer_new(&term->rend, term->width, term->height);
+		r = wlt_renderer_new(&term->rend, term->width * term->scale,
+		                     term->height * term->scale);
 		if (r < 0) {
 			err("cannot initialize renderer (%d)", r);
 			gtk_main_quit();
@@ -305,7 +308,8 @@ static gboolean term_configure_cb(GtkWidget *widget, GdkEvent *ev,
 		term_recalc_cells(term);
 		term_notify_resize(term);
 
-		r = wlt_renderer_resize(term->rend, term->width, term->height);
+		r = wlt_renderer_resize(term->rend, term->width * term->scale,
+		                        term->height * term->scale);
 		if (r < 0)
 			err("cannot resize renderer (%d)", r);
 	}
@@ -340,6 +344,8 @@ static gboolean term_redraw_cb(GtkWidget *widget, cairo_t *cr, gpointer data)
 	if (!term->initialized)
 		return FALSE;
 
+	printf("scale: %d\n", term->scale);
+
 	start = g_get_monotonic_time();
 
 	memset(&ctx, 0, sizeof(ctx));
@@ -351,6 +357,7 @@ static gboolean term_redraw_cb(GtkWidget *widget, cairo_t *cr, gpointer data)
 	ctx.cell_height = term->cell_height;
 	ctx.screen = term->screen;
 	ctx.vte = term->vte;
+	cairo_scale(cr, term->iscale, term->iscale);
 	cairo_clip_extents(cr, &ctx.x1, &ctx.y1, &ctx.x2, &ctx.y2);
 
 	wlt_renderer_draw(&ctx);
@@ -623,7 +630,7 @@ static int term_new(struct term **out)
 
 	term->window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
 	gtk_window_set_title(GTK_WINDOW(term->window), "Terminal");
-	gtk_window_set_has_resize_grip(GTK_WINDOW(term->window), FALSE);
+	gtk_window_set_decorated(GTK_WINDOW(term->window), FALSE);
 	g_signal_connect(term->window, "destroy", G_CALLBACK(term_destroy_cb),
 			 term);
 	g_signal_connect(term->window, "key-press-event",
@@ -641,6 +648,9 @@ static int term_new(struct term **out)
 	g_signal_connect(term->tarea, "draw",
 			 G_CALLBACK(term_redraw_cb), term);
 	gtk_container_add(GTK_CONTAINER(term->window), term->tarea);
+
+	term->scale = gtk_widget_get_scale_factor(GTK_WIDGET(term->tarea));
+	term->iscale = 1.0 / term->scale;
 
 	*out = term;
 	return 0;
