@@ -40,6 +40,7 @@
 #include <cairo.h>
 #include <errno.h>
 #include <gtk/gtk.h>
+#include <stdlib.h>
 #include <string.h>
 #include "wlterm.h"
 
@@ -56,12 +57,17 @@ struct wlt_config {
 	gboolean bold;
 	gboolean underline;
 	gboolean italics;
+	gboolean blink;
+
+	gint cursor_mode;
+	gboolean cursor_blink;
+	gint64 cursor_color;
 };
 
 const char DEFAULT_FONT[] = "monospace";
 
 static int load_bool(GKeyFile *keyf, const char *sect, const char *name,
-                     GError **err, gboolean *output)
+                     gboolean *output, GError **err)
 {
 	GError *e = NULL;
 	gboolean blvl = g_key_file_get_boolean(keyf, sect, name, &e);
@@ -78,12 +84,12 @@ static int load_bool(GKeyFile *keyf, const char *sect, const char *name,
 		return 0;
 	}
 
-	*err = e;
+	g_propagate_error(err, e);
 	return -EINVAL;
 }
 
-static int load_int(GKeyFile *keyf, const char *sect, const char *name,
-                    GError **err, gint *output)
+static int load_int(GKeyFile *keyf, const char *sect, const char *name, 
+                    gint *output, GError **err)
 {
 	GError *e = NULL;
 	gint ivl = g_key_file_get_integer(keyf, sect, name, &e);
@@ -100,12 +106,12 @@ static int load_int(GKeyFile *keyf, const char *sect, const char *name,
 		return 0;
 	}
 
-	*err = e;
+	g_propagate_error(err, e);
 	return -EINVAL;
 }
 
 static int load_str(GKeyFile *keyf, const char *sect, const char *name,
-                    GError **err, char **output)
+                    char **output, GError **err)
 {
 	GError *e = NULL;
 	char *svl = g_key_file_get_string(keyf, sect, name, &e);
@@ -123,8 +129,42 @@ static int load_str(GKeyFile *keyf, const char *sect, const char *name,
 		return 0;
 	}
 
-	*err = e;
+	g_propagate_error(err, e);
 	return -EINVAL;
+}
+
+static int load_int64(GKeyFile *keyf, const char *sect, const char *name,
+                      gint64 *output, GError **err)
+{
+	GError *e = NULL;
+	char *ptr = NULL;
+	long int val = 0;
+	char *svl = g_key_file_get_string(keyf, sect, name, &e);
+	if (e) {
+		if (g_error_matches(e, G_KEY_FILE_ERROR,
+		                    G_KEY_FILE_ERROR_KEY_NOT_FOUND) ||
+		    g_error_matches(e, G_KEY_FILE_ERROR,
+		                    G_KEY_FILE_ERROR_GROUP_NOT_FOUND)) {
+			g_error_free(e);
+			return 0;
+		} else {
+			g_propagate_error(err, e);
+			return -EINVAL;
+		}
+	}
+
+	errno = 0;
+	val = strtol(svl, &ptr, 0);
+	if (errno || *ptr != '\0') {
+		g_set_error(err, G_KEY_FILE_ERROR, G_KEY_FILE_ERROR_INVALID_VALUE,
+		            "en Couldn't parse int64!");
+		g_free(svl);
+		return -EINVAL;
+	}
+	g_free(svl);
+
+	*output = val;
+	return 0;
 }
 
 static int load_config_file(struct wlt_config *conf, char *fname)
@@ -168,39 +208,55 @@ static int load_config_file(struct wlt_config *conf, char *fname)
 		}
 	}
 
-	r = load_bool(keyf, "terminal", "show_dirty", &err, &conf->show_dirty);
+	r = load_bool(keyf, "terminal", "show_dirty", &conf->show_dirty, &err);
 	if (r < 0)
 		goto error;
 
-	r = load_bool(keyf, "terminal", "snap_size", &err, &conf->snap_size);
+	r = load_bool(keyf, "terminal", "snap_size", &conf->snap_size, &err);
 	if (r < 0)
 		goto error;
 
-	r = load_int(keyf, "terminal", "sb_size", &err, &conf->sb_size);
+	r = load_int(keyf, "terminal", "sb_size", &conf->sb_size, &err);
 	if (r < 0)
 		goto error;
 
-	r = load_str(keyf, "terminal", "palette", &err, &conf->palette);
+	r = load_str(keyf, "terminal", "palette", &conf->palette, &err);
 	if (r < 0)
 		goto error;
 
-	r = load_str(keyf, "font", "name", &err, &conf->font_name);
+	r = load_str(keyf, "font", "name", &conf->font_name, &err);
 	if (r < 0)
 		goto error;
 
-	r = load_int(keyf, "font", "size", &err, &conf->font_size);
+	r = load_int(keyf, "font", "size", &conf->font_size, &err);
 	if (r < 0)
 		goto error;
 
-	r = load_bool(keyf, "font", "bold", &err, &conf->bold);
+	r = load_bool(keyf, "font", "bold", &conf->bold, &err);
 	if (r < 0)
 		goto error;
 
-	r = load_bool(keyf, "font", "underline", &err, &conf->underline);
+	r = load_bool(keyf, "font", "underline", &conf->underline, &err);
 	if (r < 0)
 		goto error;
 
-	r = load_bool(keyf, "font", "italics", &err, &conf->italics);
+	r = load_bool(keyf, "font", "italics", &conf->italics, &err);
+	if (r < 0)
+		goto error;
+
+	r = load_bool(keyf, "font", "blink", &conf->blink, &err);
+	if (r < 0)
+		goto error;
+
+	r = load_int(keyf, "cursor", "mode", &conf->cursor_mode, &err);
+	if (r < 0)
+		goto error;
+
+	r = load_bool(keyf, "cursor", "blink", &conf->cursor_blink, &err);
+	if (r < 0)
+		goto error;
+
+	r = load_int64(keyf, "cursor", "color", &conf->cursor_color, &err);
 	if (r < 0)
 		goto error;
 
@@ -234,6 +290,11 @@ static int init_config(struct wlt_config *config, int argc, char **argv)
 	int bold = 2;
 	int underline = 2;
 	int italics = 2;
+	int blink = 2;
+
+	int ptr_mode = -1;
+	int ptr_blink = 2;
+	gint64 ptr_color = -1;
 
 	GOptionEntry opts[] = {
 		{ "config",        'c', G_OPTION_FLAG_NONE,    G_OPTION_ARG_FILENAME, 
@@ -268,6 +329,20 @@ static int init_config(struct wlt_config *config, int argc, char **argv)
 			&italics,    "Enable italicized text",                     NULL },
 		{ "no-italics",    'I', G_OPTION_FLAG_REVERSE, G_OPTION_ARG_NONE, 
 			&italics,    "Disable italicized text",                    NULL },
+		{ "blink",         'l', G_OPTION_FLAG_NONE,    G_OPTION_ARG_NONE, 
+			&blink,      "Enable blinking text",                       NULL },
+		{ "no-blink",      'L', G_OPTION_FLAG_REVERSE, G_OPTION_ARG_NONE, 
+			&blink,      "Disable blinking text",                      NULL },
+
+		{ "ptr-mode",      0,   G_OPTION_FLAG_NONE,    G_OPTION_ARG_INT, 
+			&ptr_mode,   "Set the cursor mode; 0: █ 1: _",             NULL },
+		{ "ptr-blink",     0,   G_OPTION_FLAG_NONE,   G_OPTION_ARG_NONE, 
+			&ptr_blink,  "Enable blinking cursor",                     NULL },
+		{ "no-ptr-blink",  0, G_OPTION_FLAG_REVERSE, G_OPTION_ARG_NONE, 
+			&ptr_blink,  "Disable blinking cursor",                    NULL },
+		{ "ptr-color",     0,   G_OPTION_FLAG_NONE,    G_OPTION_ARG_INT64, 
+			&ptr_color,  "Set the cursor color",                       NULL },
+
 		{ NULL }
 	};
 
@@ -310,6 +385,15 @@ static int init_config(struct wlt_config *config, int argc, char **argv)
 		config->underline = underline;
 	if (italics != 2)
 		config->italics = italics;
+	if (blink != 2)
+		config->blink = blink;
+
+	if (ptr_mode >= 0)
+		config->cursor_mode = ptr_mode;
+	if (ptr_blink != 2)
+		config->cursor_blink = ptr_blink;
+	if (ptr_color >= 0)
+		config->cursor_color = ptr_color;
 
 	// Since font_name gets a dynamically allocated
 	// string if allocated made using g_malloc, we have
