@@ -45,23 +45,170 @@
 
 struct wlt_config {
 	unsigned long ref;
+
 	gboolean show_dirty;
 	gboolean snap_size;
 	gint sb_size;
+	gchar *palette;
 
 	gchar *font_name;
 	gint font_size;
 	gboolean bold;
 	gboolean underline;
 	gboolean italics;
-
-	gchar *palette;
 };
 
 const char DEFAULT_FONT[] = "monospace";
 
-static void load_config_file(struct wlt_config *conf, char *fname)
+static int load_bool(GKeyFile *keyf, const char *sect, const char *name,
+                     GError **err, gboolean *output)
 {
+	GError *e = NULL;
+	gboolean blvl = g_key_file_get_boolean(keyf, sect, name, &e);
+	if (!e) {
+		*output = blvl;
+		return 0;
+	}
+
+	if (g_error_matches(e, G_KEY_FILE_ERROR,
+	                    G_KEY_FILE_ERROR_KEY_NOT_FOUND) ||
+	    g_error_matches(e, G_KEY_FILE_ERROR,
+	                    G_KEY_FILE_ERROR_GROUP_NOT_FOUND)) {
+		g_error_free(e);
+		return 0;
+	}
+
+	*err = e;
+	return -EINVAL;
+}
+
+static int load_int(GKeyFile *keyf, const char *sect, const char *name,
+                    GError **err, gint *output)
+{
+	GError *e = NULL;
+	gint ivl = g_key_file_get_integer(keyf, sect, name, &e);
+	if (!e) {
+		*output = ivl;
+		return 0;
+	}
+
+	if (g_error_matches(e, G_KEY_FILE_ERROR,
+	                    G_KEY_FILE_ERROR_KEY_NOT_FOUND) ||
+	    g_error_matches(e, G_KEY_FILE_ERROR,
+	                    G_KEY_FILE_ERROR_GROUP_NOT_FOUND)) {
+		g_error_free(e);
+		return 0;
+	}
+
+	*err = e;
+	return -EINVAL;
+}
+
+static int load_str(GKeyFile *keyf, const char *sect, const char *name,
+                    GError **err, char **output)
+{
+	GError *e = NULL;
+	char *svl = g_key_file_get_string(keyf, sect, name, &e);
+	if (!e) {
+		g_free(*output);
+		*output = svl;
+		return 0;
+	}
+
+	if (g_error_matches(e, G_KEY_FILE_ERROR,
+	                    G_KEY_FILE_ERROR_KEY_NOT_FOUND) ||
+	    g_error_matches(e, G_KEY_FILE_ERROR,
+	                    G_KEY_FILE_ERROR_GROUP_NOT_FOUND)) {
+		g_error_free(e);
+		return 0;
+	}
+
+	*err = e;
+	return -EINVAL;
+}
+
+static int load_config_file(struct wlt_config *conf, char *fname)
+{
+	GKeyFile *keyf;
+	GError *err = NULL;
+	int r;
+
+	keyf = g_key_file_new();
+	if (fname) {
+		if (!g_key_file_load_from_file(keyf, fname, G_KEY_FILE_NONE, &err))
+			goto error;
+	} else {
+		const char **dirs;
+		const char * const * sysdirs = g_get_system_config_dirs();
+		int len = 0;
+		bool res;
+
+		while (sysdirs[len++]) ;
+
+		dirs = calloc(len + 1, sizeof(char *)); 
+		if (!dirs) {
+			r = -ENOMEM;
+			goto keyfile;
+		}
+
+		dirs[0] = g_get_user_config_dir();
+		memcpy(dirs + 1, sysdirs, len * sizeof(char *));
+
+		res = g_key_file_load_from_dirs(keyf, "wlterm/wlterm.conf", dirs,
+		                                NULL, G_KEY_FILE_NONE, &err);
+		free(dirs);
+
+		if (!res) {
+			r = g_error_matches(err, G_KEY_FILE_ERROR, 
+			                    G_KEY_FILE_ERROR_NOT_FOUND) ? 0 : -EINVAL;
+			goto error;
+		}
+	}
+
+	r = load_bool(keyf, "terminal", "show_dirty", &err, &conf->show_dirty);
+	if (r < 0)
+		goto error;
+
+	r = load_bool(keyf, "terminal", "snap_size", &err, &conf->snap_size);
+	if (r < 0)
+		goto error;
+
+	r = load_int(keyf, "terminal", "sb_size", &err, &conf->sb_size);
+	if (r < 0)
+		goto error;
+
+	r = load_str(keyf, "terminal", "palette", &err, &conf->palette);
+	if (r < 0)
+		goto error;
+
+	r = load_str(keyf, "font", "name", &err, &conf->font_name);
+	if (r < 0)
+		goto error;
+
+	r = load_int(keyf, "font", "size", &err, &conf->font_size);
+	if (r < 0)
+		goto error;
+
+	r = load_bool(keyf, "font", "bold", &err, &conf->bold);
+	if (r < 0)
+		goto error;
+
+	r = load_bool(keyf, "font", "underline", &err, &conf->underline);
+	if (r < 0)
+		goto error;
+
+	r = load_bool(keyf, "font", "italics", &err, &conf->italics);
+	if (r < 0)
+		goto error;
+
+	return 0;
+
+error:
+	g_print("Could not load configuration: %s\n", err->message);
+	g_error_free(err);
+keyfile:
+	g_key_file_free(keyf);
+	return r;
 }
 
 // Loads in all of the settings. To handle the two stage loading (file
@@ -70,12 +217,14 @@ static int init_config(struct wlt_config *config, int argc, char **argv)
 {
 	GOptionContext *opt;
 	GError *e = NULL;
+	int r;
 
 	char *cfg = NULL;
 
 	int show_dirty = 2;
 	int snap_size = 2;
 	int sb_size = -1;
+	char *palette = NULL;
 
 	char *font_name = NULL;
 	int font_size = 0;
@@ -83,42 +232,39 @@ static int init_config(struct wlt_config *config, int argc, char **argv)
 	int underline = 2;
 	int italics = 2;
 
-	char *palette = NULL;
-
 	GOptionEntry opts[] = {
 		{ "config",        'c', G_OPTION_FLAG_NONE,    G_OPTION_ARG_FILENAME, 
-			&cfg,        "Specify the configuration file",         NULL},
+			&cfg,        "Specify the configuration file",             NULL },
 
 		{ "show-dirty",    0,   G_OPTION_FLAG_NONE,    G_OPTION_ARG_NONE, 
-			&show_dirty, "Mark dirty cells during redraw",         NULL },
+			&show_dirty, "Mark dirty cells during redraw",             NULL },
 		{ "no-show-dirty", 0,   G_OPTION_FLAG_REVERSE, G_OPTION_ARG_NONE, 
-			&show_dirty, "Don't mark dirty cells during redraw",   NULL },
+			&show_dirty, "Don't mark dirty cells during redraw",       NULL },
 		{ "snap-size",     0,   G_OPTION_FLAG_NONE,    G_OPTION_ARG_NONE, 
-			&snap_size,  "Snap to next cell-size when resizing",   NULL },
+			&snap_size,  "Snap to next cell-size when resizing",       NULL },
 		{ "no-snap-size",  0,   G_OPTION_FLAG_REVERSE, G_OPTION_ARG_NONE, 
-			&snap_size,  "Snap to next cell-size when resizing",   NULL },
+			&snap_size,  "Don't snap to next cell-size when resizing", NULL },
 		{ "sb-size",       0,   G_OPTION_FLAG_NONE,    G_OPTION_ARG_INT, 
-			&sb_size,    "Scroll-back buffer size in lines",       NULL },
-
-		{ "font",          0,   G_OPTION_FLAG_NONE,    G_OPTION_ARG_STRING, 
-			&font_name,  "Typeface name; defaults to 'monospace'", NULL },
-		{ "font-size",     0,   G_OPTION_FLAG_NONE,    G_OPTION_ARG_INT, 
-			&font_size,  "Font size; defaults to 10",              NULL },
-		{ "bold",          'b', G_OPTION_FLAG_NONE,    G_OPTION_ARG_NONE, 
-			&bold,       "Enable bold text",                       NULL },
-		{ "no-bold",       0,   G_OPTION_FLAG_REVERSE, G_OPTION_ARG_NONE, 
-			&bold,       "Disable bold text",                      NULL },
-		{ "underline",     'u', G_OPTION_FLAG_NONE,    G_OPTION_ARG_NONE, 
-			&underline,  "Enable undelined text",                  NULL },
-		{ "no-underline",  0,   G_OPTION_FLAG_REVERSE, G_OPTION_ARG_NONE, 
-			&underline,  "Disable undelined text",                 NULL },
-		{ "italics",       'i', G_OPTION_FLAG_NONE,    G_OPTION_ARG_NONE, 
-			&italics,    "Enable italicized text",                 NULL },
-		{ "no-italics",    0,   G_OPTION_FLAG_REVERSE, G_OPTION_ARG_NONE, 
-			&italics,    "Disable italicized text",                NULL },
-
+			&sb_size,    "Scroll-back buffer size in lines",           NULL },
 		{ "palette",       'p', G_OPTION_FLAG_NONE,    G_OPTION_ARG_STRING, 
-			&palette,    "The terminal's color palette",           NULL },
+			&palette,    "Set the terminal's color palette",           NULL },
+
+		{ "font-name",     'f', G_OPTION_FLAG_NONE,    G_OPTION_ARG_STRING, 
+			&font_name,  "Typeface name; defaults to 'monospace'",     NULL },
+		{ "font-size",     's', G_OPTION_FLAG_NONE,    G_OPTION_ARG_INT, 
+			&font_size,  "Font size; defaults to 10",                  NULL },
+		{ "bold",          'b', G_OPTION_FLAG_NONE,    G_OPTION_ARG_NONE, 
+			&bold,       "Enable bold text",                           NULL },
+		{ "no-bold",       'B', G_OPTION_FLAG_REVERSE, G_OPTION_ARG_NONE, 
+			&bold,       "Disable bold text",                          NULL },
+		{ "underline",     'u', G_OPTION_FLAG_NONE,    G_OPTION_ARG_NONE, 
+			&underline,  "Enable underlined text",                     NULL },
+		{ "no-underline",  'U', G_OPTION_FLAG_REVERSE, G_OPTION_ARG_NONE, 
+			&underline,  "Disable underlined text",                    NULL },
+		{ "italics",       'i', G_OPTION_FLAG_NONE,    G_OPTION_ARG_NONE, 
+			&italics,    "Enable italicized text",                     NULL },
+		{ "no-italics",    'I', G_OPTION_FLAG_REVERSE, G_OPTION_ARG_NONE, 
+			&italics,    "Disable italicized text",                    NULL },
 		{ NULL }
 	};
 
@@ -128,11 +274,14 @@ static int init_config(struct wlt_config *config, int argc, char **argv)
 	if (!g_option_context_parse(opt, &argc, &argv, &e)) {
 		g_print("cannot parse arguments: %s\n", e->message);
 		g_error_free(e);
-		return -EINVAL;
+		r = -EINVAL;
+		goto opt_error;
 	}
 
-	load_config_file(config, cfg);
+	r = load_config_file(config, cfg);
 	g_free(cfg);
+	if (r < 0)
+		goto file_error;
 
 	if (show_dirty != 2)
 		config->show_dirty = show_dirty;
@@ -140,6 +289,12 @@ static int init_config(struct wlt_config *config, int argc, char **argv)
 		config->snap_size = snap_size;
 	if (sb_size >= 0)
 		config->snap_size = snap_size;
+	if (palette != NULL)
+	{
+		g_free(config->palette);
+		config->palette = palette;
+	}
+
 	if (font_name != NULL) {
 		g_free(config->font_name);
 		config->font_name = font_name;
@@ -152,11 +307,6 @@ static int init_config(struct wlt_config *config, int argc, char **argv)
 		config->underline = underline;
 	if (italics != 2)
 		config->italics = italics;
-	if (palette != NULL)
-	{
-		g_free(config->palette);
-		config->palette = palette;
-	}
 
 	// Since font_name gets a dynamically allocated
 	// string if allocated made using g_malloc, we have
@@ -168,6 +318,19 @@ static int init_config(struct wlt_config *config, int argc, char **argv)
 	}
 
 	return 0;
+
+file_error:
+	// We need to free the config values in case an error occured
+	// after loading one.
+	g_free(config->font_name);
+	g_free(config->palette);
+	// We need to free the command line values as they have not yet
+	// been assigned.
+	g_free(font_name);
+	g_free(palette);
+opt_error:
+	g_option_context_free(opt);
+	return r;
 }
 
 int wlt_config_new(struct wlt_config **out, int argc, char **argv)
@@ -210,6 +373,7 @@ void wlt_config_unref(struct wlt_config *config)
 		return;
 
 	g_free(config->font_name);
+	g_free(config->palette);
 	free(config);
 }
 
