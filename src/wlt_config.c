@@ -136,7 +136,10 @@ static int load_config_file(struct wlt_config *conf, char *fname)
 	keyf = g_key_file_new();
 	if (fname) {
 		if (!g_key_file_load_from_file(keyf, fname, G_KEY_FILE_NONE, &err))
+		{
+			r = -EINVAL;
 			goto error;
+		}
 	} else {
 		const char **dirs;
 		const char * const * sysdirs = g_get_system_config_dirs();
