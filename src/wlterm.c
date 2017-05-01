@@ -376,7 +376,7 @@ static gboolean term_redraw_cb(GtkWidget *widget, cairo_t *cr, gpointer data)
 	start = g_get_monotonic_time();
 
 	memset(&ctx, 0, sizeof(ctx));
-	ctx.debug = wlt_config_get_show_dirty(term->config);
+	ctx.config = term->config;
 	ctx.rend = term->rend;
 	ctx.cr = cr;
 	memcpy(ctx.faces, term->faces, sizeof(term->faces));

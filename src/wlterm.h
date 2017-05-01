@@ -47,16 +47,31 @@ struct wlt_renderer;
 int wlt_config_new(struct wlt_config **out, int argc, char **argv);
 void wlt_config_ref(struct wlt_config *config);
 void wlt_config_unref(struct wlt_config *config);
+
 bool wlt_config_get_show_dirty(struct wlt_config *config);
 bool wlt_config_get_snap_size(struct wlt_config *config);
 int wlt_config_get_sb_size(struct wlt_config *config);
+/* This will be null if no palette is specified */
+const char *wlt_config_get_palette(struct wlt_config *config);
+
 const char *wlt_config_get_font_name(struct wlt_config *config);
 int wlt_config_get_font_size(struct wlt_config *config);
 bool wlt_config_get_bold(struct wlt_config *config);
 bool wlt_config_get_underline(struct wlt_config *config);
 bool wlt_config_get_italics(struct wlt_config *config);
-/* This will be null if no palette is specified */
-const char *wlt_config_get_palette(struct wlt_config *config);
+bool wlt_config_get_blink(struct wlt_config *config);
+
+enum wlt_cursor_mode {
+	WLT_CURSOR_INVERSE = 0,
+	WLT_CURSOR_FIXED_BG = 1,
+	WLT_CURSOR_FIXED = 2,
+	WLT_CURSOR_UNDERLINE = 3,
+};
+
+int wlt_config_get_cursor_mode(struct wlt_config *config);
+bool wlt_config_get_cursor_blink(struct wlt_config *config);
+int wlt_config_get_cursor_bg(struct wlt_config *config);
+int wlt_config_get_cursor_fg(struct wlt_config *config);
 
 
 /* fonts */
@@ -107,7 +122,7 @@ int wlt_face_render(struct wlt_face *face, struct wlt_glyph **out,
 /* rendering */
 
 struct wlt_draw_ctx {
-	bool debug;
+	struct wlt_config *config;
 	struct wlt_renderer *rend;
 	cairo_t *cr;
 	struct wlt_face *faces[8];

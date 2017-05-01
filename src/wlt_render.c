@@ -286,6 +286,16 @@ static bool overlap(const struct wlt_draw_ctx *ctx, double x1, double y1,
 		ctx->y1 < y2 && ctx->y2 > y1);
 }
 
+static void extract_rgb(int source, uint8_t *r, uint8_t *g, uint8_t *b)
+{
+	if (r)
+		*r = (source & 0xFF0000) >> 16;
+	if (g)
+		*g = (source & 0x00FF00) >>  8;
+	if (b)
+		*b = (source & 0x0000FF) >>  0;
+}
+
 static int wlt_renderer_draw_cell(struct tsm_screen *screen, uint32_t id,
 				  const uint32_t *ch, size_t len,
 				  unsigned int cwidth, unsigned int posx,
@@ -298,8 +308,9 @@ static int wlt_renderer_draw_cell(struct tsm_screen *screen, uint32_t id,
 	uint8_t fr, fg, fb, br, bg, bb;
 	unsigned int x, y;
 	int fattrs;
+	uint32_t c = *ch;
 	struct wlt_glyph *glyph;
-	bool skip;
+	bool skip, inverse;
 	int r;
 
 	x = posx * ctx->cell_width;
@@ -311,7 +322,7 @@ static int wlt_renderer_draw_cell(struct tsm_screen *screen, uint32_t id,
 	skip = overlap(ctx, x, y, x + ctx->cell_width, y + ctx->cell_height);
 	skip = skip && age && rend->age && age <= rend->age;
 
-	if (skip && !ctx->debug)
+	if (skip && !wlt_config_get_show_dirty(ctx->config))
 		return 0;
 
 	fattrs = WLT_FACE_PLAIN;
@@ -322,29 +333,60 @@ static int wlt_renderer_draw_cell(struct tsm_screen *screen, uint32_t id,
 	if (attr->italic)
 		fattrs |= WLT_FACE_ITALICS;
 
-	/* invert colors if requested */
-	if (attr->inverse != attr->cursor) {
-		fr = attr->br;
-		fg = attr->bg;
-		fb = attr->bb;
-		br = attr->fr;
-		bg = attr->fg;
-		bb = attr->fb;
-	} else {
-		fr = attr->fr;
-		fg = attr->fg;
-		fb = attr->fb;
-		br = attr->br;
-		bg = attr->bg;
-		bb = attr->bb;
+	inverse = attr->inverse;
+
+	fr = attr->fr;
+	fg = attr->fg;
+	fb = attr->fb;
+	br = attr->br;
+	bg = attr->bg;
+	bb = attr->bb;
+
+	if (attr->cursor) {
+		switch (wlt_config_get_cursor_mode(ctx->config))
+		{
+		case WLT_CURSOR_FIXED_BG:
+			if (inverse)
+				extract_rgb(wlt_config_get_cursor_bg(ctx->config), 
+				            &fr, &fg, &fb);
+			else
+				extract_rgb(wlt_config_get_cursor_bg(ctx->config),
+				            &br, &bg, &bb);
+			break;
+		case WLT_CURSOR_FIXED:
+			inverse = false;
+			extract_rgb(wlt_config_get_cursor_fg(ctx->config), &fr, &fg, &fb);
+			extract_rgb(wlt_config_get_cursor_bg(ctx->config), &br, &bg, &bb);
+			break;
+		case WLT_CURSOR_UNDERLINE:
+			fattrs ^= WLT_FACE_UNDERLINE;
+			if (!len)
+			{
+				len = 1;
+				c = ' ';
+			}
+			break;
+		case WLT_CURSOR_INVERSE:
+		default:
+			inverse = !inverse;
+			break;
+		}
 	}
+
+	/* invert colors if requested */
+	if (inverse) {
+		int t;
+		t = fr; fr = br; br = t;
+		t = fg; fg = bg; bg = t;
+		t = fb; fb = bb; bb = t;
+	} 
 
 	/* !len means background-only */
 	if (!len) {
 		wlt_renderer_fill(rend, x, y, ctx->cell_width * cwidth,
 				  ctx->cell_height, br, bg, bb);
 	} else {
-		r = wlt_face_render(ctx->faces[fattrs], &glyph, id, ch, len, cwidth);
+		r = wlt_face_render(ctx->faces[fattrs], &glyph, id, &c, len, cwidth);
 		if (r < 0)
 			wlt_renderer_fill(rend, x, y, ctx->cell_width * cwidth,
 					  ctx->cell_height, br, bg, bb);
@@ -353,7 +395,7 @@ static int wlt_renderer_draw_cell(struct tsm_screen *screen, uint32_t id,
 					   fr, fg, fb, br, bg, bb);
 	}
 
-	if (!skip && ctx->debug)
+	if (!skip && wlt_config_get_show_dirty(ctx->config))
 		wlt_renderer_highlight(rend, x, y, ctx->cell_width * cwidth,
 				       ctx->cell_height);
 

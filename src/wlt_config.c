@@ -61,7 +61,8 @@ struct wlt_config {
 
 	gint cursor_mode;
 	gboolean cursor_blink;
-	gint64 cursor_color;
+	gint64 cursor_fg;
+	gint64 cursor_bg;
 };
 
 const char DEFAULT_FONT[] = "monospace";
@@ -256,7 +257,11 @@ static int load_config_file(struct wlt_config *conf, char *fname)
 	if (r < 0)
 		goto error;
 
-	r = load_int64(keyf, "cursor", "color", &conf->cursor_color, &err);
+	r = load_int64(keyf, "cursor", "fg", &conf->cursor_fg, &err);
+	if (r < 0)
+		goto error;
+
+	r = load_int64(keyf, "cursor", "bg", &conf->cursor_bg, &err);
 	if (r < 0)
 		goto error;
 
@@ -294,7 +299,8 @@ static int init_config(struct wlt_config *config, int argc, char **argv)
 
 	int ptr_mode = -1;
 	int ptr_blink = 2;
-	gint64 ptr_color = -1;
+	gint64 ptr_fg = -1;
+	gint64 ptr_bg = -1;
 
 	GOptionEntry opts[] = {
 		{ "config",        'c', G_OPTION_FLAG_NONE,    G_OPTION_ARG_FILENAME, 
@@ -335,13 +341,16 @@ static int init_config(struct wlt_config *config, int argc, char **argv)
 			&blink,      "Disable blinking text",                      NULL },
 
 		{ "ptr-mode",      0,   G_OPTION_FLAG_NONE,    G_OPTION_ARG_INT, 
-			&ptr_mode,   "Set the cursor mode; 0: █ 1: _",             NULL },
+			&ptr_mode,   "Set the cursor mode. 0: inverse 1: fixed bg 2: "
+			             "fixed fg and bg 3: underline",               NULL },
 		{ "ptr-blink",     0,   G_OPTION_FLAG_NONE,   G_OPTION_ARG_NONE, 
 			&ptr_blink,  "Enable blinking cursor",                     NULL },
 		{ "no-ptr-blink",  0, G_OPTION_FLAG_REVERSE, G_OPTION_ARG_NONE, 
 			&ptr_blink,  "Disable blinking cursor",                    NULL },
-		{ "ptr-color",     0,   G_OPTION_FLAG_NONE,    G_OPTION_ARG_INT64, 
-			&ptr_color,  "Set the cursor color",                       NULL },
+		{ "ptr-fg",        0,   G_OPTION_FLAG_NONE,    G_OPTION_ARG_INT64, 
+			&ptr_fg,     "Set the cursor foreground (mode 2 only)",    NULL },
+		{ "ptr-bg",        0,   G_OPTION_FLAG_NONE,    G_OPTION_ARG_INT64, 
+			&ptr_bg,     "Set the cursor background (modes 1-2 only)", NULL },
 
 		{ NULL }
 	};
@@ -392,8 +401,10 @@ static int init_config(struct wlt_config *config, int argc, char **argv)
 		config->cursor_mode = ptr_mode;
 	if (ptr_blink != 2)
 		config->cursor_blink = ptr_blink;
-	if (ptr_color >= 0)
-		config->cursor_color = ptr_color;
+	if (ptr_fg >= 0)
+		config->cursor_fg = ptr_fg;
+	if (ptr_bg >= 0)
+		config->cursor_bg = ptr_bg;
 
 	// Since font_name gets a dynamically allocated
 	// string if allocated made using g_malloc, we have
@@ -479,6 +490,11 @@ int wlt_config_get_sb_size(struct wlt_config *config)
 	return config->sb_size;
 }
 
+const char *wlt_config_get_palette(struct wlt_config *config)
+{
+	return config->palette;
+}
+
 const char *wlt_config_get_font_name(struct wlt_config *config)
 {
 	return config->font_name;
@@ -504,7 +520,27 @@ bool wlt_config_get_italics(struct wlt_config *config)
 	return config->italics;
 }
 
-const char *wlt_config_get_palette(struct wlt_config *config)
+bool wlt_config_get_blink(struct wlt_config *config)
 {
-	return config->palette;
+	return config->blink;
+}
+
+int wlt_config_get_cursor_mode(struct wlt_config *config)
+{
+	return config->cursor_mode;
+}
+
+bool wlt_config_get_cursor_blink(struct wlt_config *config)
+{
+	return config->cursor_blink;
+}
+
+int wlt_config_get_cursor_fg(struct wlt_config *config)
+{
+	return config->cursor_fg;
+}
+
+int wlt_config_get_cursor_bg(struct wlt_config *config)
+{
+	return config->cursor_bg;
 }
