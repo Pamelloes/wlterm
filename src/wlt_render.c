@@ -334,6 +334,8 @@ static int wlt_renderer_draw_cell(struct tsm_screen *screen, uint32_t id,
 		fattrs |= WLT_FACE_ITALICS;
 
 	inverse = attr->inverse;
+	if (attr->selection)
+		inverse = !inverse;
 
 	fr = attr->fr;
 	fg = attr->fg;

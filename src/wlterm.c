@@ -494,24 +494,24 @@ static gboolean term_button_cb(GtkWidget *widget, GdkEvent *ev,
 	if (e->type == GDK_BUTTON_PRESS) {
 		term->sel = 1;
 		term->sel_start = e->time;
-		term->sel_x = e->x;
-		term->sel_y = e->y;
+		term->sel_x = term->scale * e->x;
+		term->sel_y = term->scale * e->y;
 	} else if (e->type == GDK_2BUTTON_PRESS) {
 		term->sel = 2;
 		/* TODO: select word */
 		tsm_screen_selection_start(term->screen,
-					   e->x / term->cell_width,
-					   e->y / term->cell_height);
+		                           term->scale * e->x / term->cell_width,
+		                           term->scale * e->y / term->cell_height);
 		gtk_widget_queue_draw(term->tarea);
 	} else if (e->type == GDK_3BUTTON_PRESS) {
 		term->sel = 2;
 		/* TODO: select line */
 		tsm_screen_selection_start(term->screen,
-					   e->x / term->cell_width,
-					   e->y / term->cell_height);
+		                           term->scale * e->x / term->cell_width,
+		                           term->scale * e->y / term->cell_height);
 		gtk_widget_queue_draw(term->tarea);
 	} else if (e->type == GDK_BUTTON_RELEASE) {
-		if (term->sel == 1 && term->sel_start + 100 > e->time) {
+		if (term->sel == 1 && term->sel_start + 500 > e->time) {
 			tsm_screen_selection_reset(term->screen);
 			gtk_widget_queue_draw(term->tarea);
 		} else if (term->sel > 1) {
@@ -534,18 +534,18 @@ static gboolean term_motion_cb(GtkWidget *widget, GdkEvent *ev,
 		return TRUE;
 
 	if (term->sel == 1) {
-		if (fabs(term->sel_x - e->x) > 3 ||
-		    fabs(term->sel_y - e->y) > 3) {
+		if (fabs(term->sel_x - term->scale * e->x) > 3 ||
+		    fabs(term->sel_y - term->scale * e->y) > 3) {
 			term->sel = 2;
 			tsm_screen_selection_start(term->screen,
-						   term->sel_x / term->cell_width,
-						   term->sel_y / term->cell_height);
+			                           term->sel_x / term->cell_width,
+			                           term->sel_y / term->cell_height);
 			gtk_widget_queue_draw(term->tarea);
 		}
 	} else {
 		tsm_screen_selection_target(term->screen,
-					    e->x / term->cell_width,
-					    e->y / term->cell_height);
+		                            term->scale * e->x / term->cell_width,
+		                            term->scale * e->y / term->cell_height);
 		gtk_widget_queue_draw(term->tarea);
 	}
 
