@@ -46,6 +46,7 @@
 
 struct term {
 	struct wlt_config *config;
+	char *const *argv;
 
 	GtkWidget *window;
 	GdkKeymap *keymap;
@@ -139,14 +140,8 @@ static void log_tsm(void *data, const char *file, int line, const char *fn,
 
 static void __attribute__((noreturn)) term_run_child(struct term *term)
 {
-	char **argv = (char*[]){
-		getenv("SHELL") ? : _PATH_BSHELL,
-		"-il",
-		NULL
-	};
-
 	setenv("TERM", "xterm-256color", 1);
-	execve(argv[0], argv, environ);
+	execve(term->argv[0], term->argv, environ);
 	exit(1);
 }
 
@@ -615,13 +610,18 @@ static void term_free(struct term *term)
 	wlt_font_unref(term->font);
 	if (term->window)
 		gtk_widget_destroy(term->window);
+	if (term->argv)
+		for (int i = 0; term->argv[i]; ++i) free(term->argv[i]);
+	free((void *) term->argv);
 	wlt_config_unref(term->config);
 	free(term);
 }
 
-static int term_new(struct term **out, struct wlt_config *config)
+static int term_new(struct term **out, struct wlt_config *config,
+                    int argc, char **argv)
 {
 	struct term *term;
+	char **targv;
 	int sb_size, r;
 
 	term = calloc(1, sizeof(*term));
@@ -632,9 +632,36 @@ static int term_new(struct term **out, struct wlt_config *config)
 	term->config = config;
 	wlt_config_ref(term->config);
 
+	if (argc > 1) {
+		targv = calloc(argc, sizeof(char *));
+		if (!targv)
+			goto free;
+
+		for (int i = 1; i < argc; ++i)
+			if (!(targv[i - 1] = strdup(argv[i])))
+				goto err_argv;
+	} else {
+		targv = calloc(3, sizeof(char *));
+		if (!targv)
+			goto free;
+
+		{
+			char *shell = getenv("SHELL") ? getenv("SHELL") : _PATH_BSHELL;
+			if (!(targv[0] = strdup(shell)))
+				goto err_argv;
+		}
+
+		{
+			char il[] = "-il";
+			if (!(targv[1] = strdup(il)))
+				goto err_argv;
+		}
+	}
+	term->argv = targv;
+
 	r = wlt_font_new(&term->font);
 	if (r < 0)
-		goto err_free;
+		goto err_argv;
 
 	r = tsm_screen_new(&term->screen, log_tsm, term);
 	if (r < 0)
@@ -701,7 +728,10 @@ err_screen:
 	tsm_screen_unref(term->screen);
 err_font:
 	wlt_font_unref(term->font);
-err_free:
+err_argv:
+	for (int i = 0; targv[i]; ++i) free(targv[i]);
+	free(targv);
+free:
 	wlt_config_unref(term->config);
 	free(term);
 	return r;
@@ -725,11 +755,14 @@ int main(int argc, char **argv)
 	struct term *term;
 	int r;
 
-	r = wlt_config_new(&config, argc, argv);
+	r = wlt_config_new(&config, &argc, &argv);
 	if (r < 0)
 		return -r;
 
-	r = term_new(&term, config);
+	for (int i = 0; i < argc; ++i)
+		printf("%s\n", argv[i]);
+
+	r = term_new(&term, config, argc, argv);
 	if (r < 0)
 		goto error;
 

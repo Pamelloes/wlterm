@@ -277,7 +277,7 @@ keyfile:
 
 // Loads in all of the settings. To handle the two stage loading (file
 // then command line), we need to use some indirection.
-static int init_config(struct wlt_config *config, int argc, char **argv)
+static int init_config(struct wlt_config *config, int *argc, char ***argv)
 {
 	GOptionContext *opt;
 	GError *e = NULL;
@@ -355,10 +355,12 @@ static int init_config(struct wlt_config *config, int argc, char **argv)
 		{ NULL }
 	};
 
-	opt = g_option_context_new("- Wayland Terminal Emulator");
+	opt = g_option_context_new("-- COMMAND");
+	g_option_context_set_summary(opt, "wlterm is a libtsm based terminal "
+		"emulator built using GTK+ and friends for rendering.");
 	g_option_context_add_main_entries(opt, opts, NULL);
 	g_option_context_add_group(opt, gtk_get_option_group(TRUE));
-	if (!g_option_context_parse(opt, &argc, &argv, &e)) {
+	if (!g_option_context_parse(opt, argc, argv, &e)) {
 		g_print("cannot parse arguments: %s\n", e->message);
 		g_error_free(e);
 		r = -EINVAL;
@@ -431,7 +433,7 @@ opt_error:
 	return r;
 }
 
-int wlt_config_new(struct wlt_config **out, int argc, char **argv)
+int wlt_config_new(struct wlt_config **out, int *argc, char ***argv)
 {
 	struct wlt_config *config;
 	int r;

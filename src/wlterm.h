@@ -44,7 +44,7 @@ struct wlt_renderer;
 
 /* config */
 
-int wlt_config_new(struct wlt_config **out, int argc, char **argv);
+int wlt_config_new(struct wlt_config **out, int *argc, char ***argv);
 void wlt_config_ref(struct wlt_config *config);
 void wlt_config_unref(struct wlt_config *config);
 
