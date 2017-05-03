@@ -53,6 +53,11 @@ bool wlt_config_get_snap_size(struct wlt_config *config);
 int wlt_config_get_sb_size(struct wlt_config *config);
 /* This will be null if no palette is specified */
 const char *wlt_config_get_palette(struct wlt_config *config);
+/* 
+ * The return value should be thought of as const char *const *, but
+ * is left as char *const * for compatibility with exec.
+ */
+char *const *wlt_config_get_argv(struct wlt_config *config);
 
 const char *wlt_config_get_font_name(struct wlt_config *config);
 int wlt_config_get_font_size(struct wlt_config *config);

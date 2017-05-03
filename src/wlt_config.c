@@ -40,6 +40,7 @@
 #include <cairo.h>
 #include <errno.h>
 #include <gtk/gtk.h>
+#include <paths.h>
 #include <stdlib.h>
 #include <string.h>
 #include "wlterm.h"
@@ -51,6 +52,7 @@ struct wlt_config {
 	gboolean snap_size;
 	gint sb_size;
 	gchar *palette;
+	char **argv;
 
 	gchar *font_name;
 	gint font_size;
@@ -134,6 +136,58 @@ static int load_str(GKeyFile *keyf, const char *sect, const char *name,
 	return -EINVAL;
 }
 
+static int load_argv(GKeyFile *keyf, const char *sect, const char *name,
+                     char ***output, GError **err)
+{
+	GError *e = NULL;
+	char prm[] = "-c";
+	char **val = NULL;
+	int r = 0;
+	char *svl = g_key_file_get_string(keyf, sect, name, &e);
+	if (e) {
+		if (g_error_matches(e, G_KEY_FILE_ERROR,
+		                    G_KEY_FILE_ERROR_KEY_NOT_FOUND) ||
+		    g_error_matches(e, G_KEY_FILE_ERROR,
+		                    G_KEY_FILE_ERROR_GROUP_NOT_FOUND)) {
+			g_error_free(e);
+			return 0;
+		} else {
+			g_propagate_error(err, e);
+			return -EINVAL;
+		}
+	}
+
+	val = calloc(4, sizeof(char *));
+	if (!val) {
+		r = -ENOMEM;
+		goto err_svl;
+	}
+
+	val[1] = strdup(prm);
+	if  (!val[1]) {
+		r = -ENOMEM;
+		goto err_val;
+	}
+
+	val[2] = strdup(svl);
+	if (!val[2]) {
+		r = -ENOMEM;
+		goto err_val_1;
+	}
+
+	g_free(svl);
+	*output = val;
+	return 0;
+
+err_val_1:
+	free(val[1]);
+err_val:
+	free(val);
+err_svl:
+	g_free(svl);
+	return r;
+}
+
 static int load_int64(GKeyFile *keyf, const char *sect, const char *name,
                       gint64 *output, GError **err)
 {
@@ -183,7 +237,7 @@ static int load_config_file(struct wlt_config *conf, char *fname)
 		}
 	} else {
 		const char **dirs;
-		const char * const * sysdirs = g_get_system_config_dirs();
+		const char * const *sysdirs = g_get_system_config_dirs();
 		int len = 0;
 		bool res;
 
@@ -222,6 +276,10 @@ static int load_config_file(struct wlt_config *conf, char *fname)
 		goto error;
 
 	r = load_str(keyf, "terminal", "palette", &conf->palette, &err);
+	if (r < 0)
+		goto error;
+
+	r = load_argv(keyf, "terminal", "exec", &conf->argv, &err);
 	if (r < 0)
 		goto error;
 
@@ -284,6 +342,7 @@ static int init_config(struct wlt_config *config, int *argc, char ***argv)
 	int r;
 
 	char *cfg = NULL;
+	char **targv = NULL;
 
 	int show_dirty = 2;
 	int snap_size = 2;
@@ -372,14 +431,70 @@ static int init_config(struct wlt_config *config, int *argc, char ***argv)
 	if (r < 0)
 		goto file_error;
 
+	if (*argc > 1) {
+		if (config->argv) {
+			for (int i = 1; config->argv[i]; ++i)
+				free(config->argv[i]);
+			free(config->argv);
+			config->argv = NULL;
+		}
+
+		targv = calloc(*argc, sizeof(char *));
+		if (!targv) {
+			r = -ENOMEM;
+			goto file_error;
+		}
+
+		for (int i = 1; i < *argc; ++i) {
+			if (!(targv[i - 1] = strdup((*argv)[i]))) {
+				r = -ENOMEM;
+				goto err_argv;
+			}
+		}
+
+		config->argv = targv;
+	} else {
+		// We execute the command specified in the config as SHELL -c "..."
+		// while our default option is SHELL -il. The array gets set up with
+		// targv = { NULL, "-c", <command>, NULL } if specified in the config.
+		// We either fill in the missing blank or fully set up the array
+		// depending on the situation.
+		if (config->argv)
+			targv = config->argv;
+		else
+			targv = calloc(3, sizeof(char *));
+		if (!targv) {
+			r = -ENOMEM;
+			goto file_error;
+		}
+
+		{
+			char *shell = getenv("SHELL") ? getenv("SHELL") : _PATH_BSHELL;
+			if (!(targv[0] = strdup(shell))) {
+				++targv; // To properly free the rest of the array
+				r = -ENOMEM;
+				goto err_argv;
+			}
+		}
+
+		if (!config->argv) {
+			char il[] = "-il";
+			if (!(targv[1] = strdup(il))) {
+				r = -ENOMEM;
+				goto err_argv;
+			}
+		}
+
+		config->argv = targv;
+	}
+
 	if (show_dirty != 2)
 		config->show_dirty = show_dirty;
 	if (snap_size != 2)
 		config->snap_size = snap_size;
 	if (sb_size >= 0)
 		config->snap_size = snap_size;
-	if (palette != NULL)
-	{
+	if (palette != NULL) {
 		g_free(config->palette);
 		config->palette = palette;
 	}
@@ -419,6 +534,11 @@ static int init_config(struct wlt_config *config, int *argc, char ***argv)
 
 	return 0;
 
+err_argv:
+	if (targv)
+		for (int i = 0; targv[i]; ++i)
+			free(targv[i]);
+	free(targv);
 file_error:
 	// We need to free the config values in case an error occured
 	// after loading one.
@@ -474,6 +594,9 @@ void wlt_config_unref(struct wlt_config *config)
 
 	g_free(config->font_name);
 	g_free(config->palette);
+	if (config->argv)
+		for (int i = 0; config->argv[i]; ++i) free(config->argv[i]);
+	free(config->argv);
 	free(config);
 }
 
@@ -495,6 +618,11 @@ int wlt_config_get_sb_size(struct wlt_config *config)
 const char *wlt_config_get_palette(struct wlt_config *config)
 {
 	return config->palette;
+}
+
+char *const *wlt_config_get_argv(struct wlt_config *config)
+{
+	return config->argv;
 }
 
 const char *wlt_config_get_font_name(struct wlt_config *config)
